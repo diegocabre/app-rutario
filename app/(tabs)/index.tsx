@@ -40,6 +40,8 @@ export default function ListaClientes() {
   const [importando, setImportando] = useState(false);
   const [progresoImport, setProgresoImport] = useState({ actual: 0, total: 0 });
   const [agregando, setAgregando] = useState(false);
+  const [editandoRutId, setEditandoRutId] = useState<string | null>(null);
+  const [rutEditado, setRutEditado] = useState<string>("");
 
   useEffect(() => {
     cargarClientes();
@@ -145,7 +147,6 @@ export default function ListaClientes() {
       setImportando(true);
       setProgresoImport({ actual: 0, total: filas.length });
 
-      // Agrega todos primero como "pendiente" para verlos aparecer de inmediato
       const rutsExistentes = new Set(clientes.map((c) => limpiarRut(c.rut)));
       const rutsEnEsteArchivo = new Set<string>();
       let duplicadosOmitidos = 0;
@@ -154,7 +155,7 @@ export default function ListaClientes() {
       const nuevosClientes: Cliente[] = [];
 
       for (const fila of filas) {
-        if (!formatoRutValido(fila.rut)) {
+        if (!fila.rut || !fila.rut.trim()) {
           invalidosOmitidos++;
           continue;
         }
@@ -171,7 +172,9 @@ export default function ListaClientes() {
         nuevosClientes.push({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           nombre: fila.nombre,
-          rut: formatearRut(fila.rut),
+          rut: formatoRutValido(fila.rut)
+            ? formatearRut(fila.rut)
+            : fila.rut.trim(),
           direccion: fila.direccion,
           geoStatus: "pendiente" as const,
         });
@@ -179,24 +182,13 @@ export default function ListaClientes() {
 
       if (nuevosClientes.length === 0) {
         setImportando(false);
-        if (duplicadosOmitidos > 0 || invalidosOmitidos > 0) {
-          Alert.alert(
-            "Importación completa",
-            `Se agregaron ${nuevosClientes.length} clientes.\n` +
-              (duplicadosOmitidos > 0
-                ? `${duplicadosOmitidos} duplicados omitidos.\n`
-                : "") +
-              (invalidosOmitidos > 0
-                ? `${invalidosOmitidos} con RUT inválido omitidos.`
-                : ""),
-          );
-        }
         Alert.alert(
           "Nada que importar",
           `Todos los registros ya existían o tenían RUT inválido (${duplicadosOmitidos} duplicados, ${invalidosOmitidos} inválidos)`,
         );
         return;
       }
+
       let listaActual = [...clientes, ...nuevosClientes];
       guardarClientes(listaActual);
 
@@ -204,17 +196,21 @@ export default function ListaClientes() {
       // (Nominatim solo permite 1 solicitud por segundo)
       for (let i = 0; i < nuevosClientes.length; i++) {
         const cliente = nuevosClientes[i];
-        const resultado = await geocodificarDireccion(cliente.direccion);
+        const resultadoGeo = await geocodificarDireccion(cliente.direccion);
 
         listaActual = listaActual.map((c) =>
           c.id === cliente.id
             ? {
                 ...c,
                 lat:
-                  resultado.status === "ok" ? resultado.coords.lat : undefined,
+                  resultadoGeo.status === "ok"
+                    ? resultadoGeo.coords.lat
+                    : undefined,
                 lng:
-                  resultado.status === "ok" ? resultado.coords.lng : undefined,
-                geoStatus: resultado.status,
+                  resultadoGeo.status === "ok"
+                    ? resultadoGeo.coords.lng
+                    : undefined,
+                geoStatus: resultadoGeo.status,
               }
             : c,
         );
@@ -226,7 +222,39 @@ export default function ListaClientes() {
         }
       }
 
+      // Resumen final: cuántos quedaron bien ubicados y cuáles fallaron
+      const idsRecienImportados = new Set(nuevosClientes.map((c) => c.id));
+      const conError = listaActual.filter(
+        (c) =>
+          idsRecienImportados.has(c.id) &&
+          (c.geoStatus === "error" || c.geoStatus === "sin_conexion"),
+      );
+      const ubicadosOk = nuevosClientes.length - conError.length;
+
       setImportando(false);
+
+      const nombresConError = conError
+        .slice(0, 8)
+        .map((c) => `• ${c.nombre}`)
+        .join("\n");
+      const yMas =
+        conError.length > 8 ? `\n...y ${conError.length - 8} más` : "";
+
+      let mensaje = `✅ ${ubicadosOk} clientes importados y ubicados correctamente.`;
+
+      if (conError.length > 0) {
+        mensaje += `\n\n⚠️ ${conError.length} no se pudieron ubicar:\n${nombresConError}${yMas}\n\nBusca el ícono "✏️ Editar dirección" en cada uno para corregirlos.`;
+      }
+
+      if (duplicadosOmitidos > 0) {
+        mensaje += `\n\n${duplicadosOmitidos} duplicados omitidos (RUT ya existente).`;
+      }
+
+      if (invalidosOmitidos > 0) {
+        mensaje += `\n\n${invalidosOmitidos} con RUT de formato inválido, omitidos.`;
+      }
+
+      Alert.alert("Importación completa", mensaje);
     } catch (e: any) {
       setImportando(false);
       alert(e.message ?? "Error al importar el archivo");
@@ -309,6 +337,34 @@ export default function ListaClientes() {
         : c,
     );
     guardarClientes(listaFinal);
+  };
+
+  const guardarCorreccionRut = (clienteId: string): void => {
+    if (!rutEditado.trim()) return;
+
+    if (!formatoRutValido(rutEditado)) {
+      Alert.alert("RUT inválido", "Revisa el formato del RUT ingresado");
+      return;
+    }
+
+    const rutLimpio = limpiarRut(rutEditado);
+    const yaExiste = clientes.find(
+      (c) => c.id !== clienteId && limpiarRut(c.rut) === rutLimpio,
+    );
+
+    if (yaExiste) {
+      Alert.alert(
+        "RUT duplicado",
+        `Ese RUT ya pertenece a "${yaExiste.nombre}"`,
+      );
+      return;
+    }
+
+    const listaActualizada = clientes.map((c) =>
+      c.id === clienteId ? { ...c, rut: formatearRut(rutEditado) } : c,
+    );
+    guardarClientes(listaActualizada);
+    setEditandoRutId(null);
   };
 
   return (
@@ -394,7 +450,43 @@ export default function ListaClientes() {
                 </View>
               ) : (
                 <>
-                  <Text style={styles.rutCliente}>{item.rut}</Text>
+                  {editandoRutId === item.id ? (
+                    <View style={styles.edicionContainer}>
+                      <TextInput
+                        style={styles.inputEdicion}
+                        value={rutEditado}
+                        onChangeText={setRutEditado}
+                        placeholder="RUT (ej: 12345678-9)"
+                        autoCapitalize="characters"
+                        autoFocus
+                      />
+                      <TouchableOpacity
+                        style={styles.botonGuardar}
+                        onPress={() => guardarCorreccionRut(item.id)}
+                      >
+                        <Text style={styles.botonGuardarTexto}>Guardar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.rutCliente}>
+                        {item.rut}
+                        {!formatoRutValido(item.rut) && "  ⚠️ formato inválido"}
+                      </Text>
+                      {!formatoRutValido(item.rut) && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditandoRutId(item.id);
+                            setRutEditado(item.rut);
+                          }}
+                        >
+                          <Text style={styles.editarTexto}>
+                            ✏️ Corregir RUT
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
                   <Text style={styles.direccionCliente}>{item.direccion}</Text>
                   <Text style={styles.geoEstado}>
                     {item.geoStatus === "pendiente" && "📍 Ubicando..."}
