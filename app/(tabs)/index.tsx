@@ -21,6 +21,7 @@ export default function ListaClientes() {
     agregando,
     agregarCliente,
     importarCSV,
+    borrarTodosLosClientes,
     eliminarCliente,
     reintentarGeocodificacion,
     guardarCorreccionDireccion,
@@ -79,6 +80,14 @@ export default function ListaClientes() {
             {importando
               ? `Geocodificando ${progresoImport.actual}/${progresoImport.total}...`
               : "📂 Importar desde CSV"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.botonBorrarTodo}
+          onPress={borrarTodosLosClientes}
+        >
+          <Text style={styles.botonBorrarTodoTexto}>
+            🗑️ Borrar todos los clientes
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -153,4 +162,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bannerOfflineTexto: { color: "#92400e", fontSize: 12, textAlign: "center" },
+  botonBorrarTodo: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e11d48",
+    borderRadius: 8,
+    padding: 10,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  botonBorrarTodoTexto: { color: "#e11d48", fontWeight: "600", fontSize: 13 },
 });

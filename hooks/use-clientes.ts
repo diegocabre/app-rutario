@@ -230,6 +230,39 @@ export function useClientes() {
     }
   };
 
+  const borrarTodosLosClientes = (): void => {
+    if (clientes.length === 0) {
+      Alert.alert("Nada que borrar", "No tienes clientes cargados");
+      return;
+    }
+
+    Alert.alert(
+      "Borrar todos los clientes",
+      `Esto eliminará los ${clientes.length} clientes cargados. Esta acción no se puede deshacer.\n\n¿Continuar?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Borrar todo",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert(
+              "Confirmar de nuevo",
+              "¿Estás completamente seguro? Se perderán todos los clientes y sus ubicaciones.",
+              [
+                { text: "Cancelar", style: "cancel" },
+                {
+                  text: "Sí, borrar todo",
+                  style: "destructive",
+                  onPress: () => guardarClientes([]),
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const eliminarCliente = (id: string): void => {
     const cliente = clientes.find((c) => c.id === id);
 
@@ -353,5 +386,6 @@ export function useClientes() {
     reintentarGeocodificacion,
     guardarCorreccionDireccion,
     guardarCorreccionRut,
+    borrarTodosLosClientes,
   };
 }

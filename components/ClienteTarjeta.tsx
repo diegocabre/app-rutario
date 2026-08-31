@@ -104,9 +104,11 @@ export default function ClienteTarjeta({
         <Text style={styles.geoEstado}>
           {cliente.geoStatus === "pendiente" && "📍 Ubicando..."}
           {cliente.geoStatus === "ok" && "✅ Ubicado"}
+          {cliente.geoStatus === "aproximado" &&
+            "🟠 Ubicación aproximada, ajusta en el Mapa"}
           {(cliente.geoStatus === "error" ||
             cliente.geoStatus === "no_encontrado") &&
-            "⚠️ No se encontró, corrige la dirección"}
+            "⚠️ No se encontró, corrige la dirección o ubica en el Mapa"}
           {cliente.geoStatus === "sin_conexion" &&
             "📡 Sin conexión, reintenta cuando tengas señal"}
         </Text>

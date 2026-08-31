@@ -5,5 +5,11 @@ export interface Cliente {
   direccion: string;
   lat?: number;
   lng?: number;
-  geoStatus: "pendiente" | "ok" | "error" | "sin_conexion" | "no_encontrado";
+  geoStatus:
+    | "pendiente"
+    | "ok"
+    | "aproximado"
+    | "error"
+    | "sin_conexion"
+    | "no_encontrado";
 }
