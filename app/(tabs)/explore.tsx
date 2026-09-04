@@ -15,6 +15,7 @@ import MapView, {
   Polyline,
 } from "react-native-maps";
 import { useFocusEffect } from "@react-navigation/native";
+import { useKeepAwake } from "expo-keep-awake";
 
 import { useClientes } from "@/context/ClientesContext";
 import { Cliente, NivelPrioridadVisita } from "@/types/cliente";
@@ -30,6 +31,8 @@ const REGION_DEFECTO = {
 type FiltroPrioridad = "todos" | NivelPrioridadVisita;
 
 export default function MapaClientes() {
+  useKeepAwake();
+
   const {
     clientes,
     actualizarUbicacionManual,

@@ -20,11 +20,13 @@ import {
 } from "@/types/cliente";
 import { parsearCSV } from "@/services/csv";
 import { geocodificarDireccion } from "@/services/geocoding";
+import { obtenerRutaVialEntrePuntos } from "@/services/routing";
 import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
 
 const STORAGE_KEY = "clientes";
 const STORAGE_KEY_VISITAS = "visitas";
 const STORAGE_KEY_TRACKING_PREFIJO = "tracking_trayectoria_";
+const STORAGE_KEY_TRACKING_KM_PREFIJO = "tracking_km_";
 
 type VisitasPorFecha = Record<string, RegistroVisita[]>;
 
@@ -156,9 +158,12 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
 
   // Estados de Tracking GPS Real (Migas de Pan)
   const [trayectoriaReal, setTrayectoriaReal] = useState<PuntoGPS[]>([]);
+  const trayectoriaRealRef = useRef<PuntoGPS[]>([]);
   const [kmRecorridosReales, setKmRecorridosReales] = useState(0);
+  const kmRecorridosRealesRef = useRef(0);
   const [grabandoRuta, setGrabandoRuta] = useState(true);
   const grabandoRutaRef = useRef(grabandoRuta);
+  const procesandoSaltoRef = useRef(false);
 
   useEffect(() => {
     grabandoRutaRef.current = grabandoRuta;
@@ -190,32 +195,51 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   // Cargar trayectoria guardada de hoy
   const cargarTrayectoriaHoy = async (): Promise<void> => {
     try {
-      const key = `${STORAGE_KEY_TRACKING_PREFIJO}${obtenerFechaHoy()}`;
-      const data = await AsyncStorage.getItem(key);
+      const fecha = obtenerFechaHoy();
+      const keyTrayectoria = `${STORAGE_KEY_TRACKING_PREFIJO}${fecha}`;
+      const data = await AsyncStorage.getItem(keyTrayectoria);
       if (data) {
         const puntos: PuntoGPS[] = JSON.parse(data);
         setTrayectoriaReal(puntos);
+        trayectoriaRealRef.current = puntos;
 
-        let km = 0;
-        for (let i = 1; i < puntos.length; i++) {
-          km += calcularDistanciaKm(
-            puntos[i - 1].latitude,
-            puntos[i - 1].longitude,
-            puntos[i].latitude,
-            puntos[i].longitude,
-          );
+        const keyKm = `${STORAGE_KEY_TRACKING_KM_PREFIJO}${fecha}`;
+        const dataKm = await AsyncStorage.getItem(keyKm);
+        if (dataKm) {
+          const km = parseFloat(dataKm) || 0;
+          setKmRecorridosReales(km);
+          kmRecorridosRealesRef.current = km;
+        } else {
+          let km = 0;
+          for (let i = 1; i < puntos.length; i++) {
+            km += calcularDistanciaKm(
+              puntos[i - 1].latitude,
+              puntos[i - 1].longitude,
+              puntos[i].latitude,
+              puntos[i].longitude,
+            );
+          }
+          setKmRecorridosReales(km);
+          kmRecorridosRealesRef.current = km;
         }
-        setKmRecorridosReales(km);
       }
     } catch (e) {
       console.error("Error cargando trayectoria de hoy", e);
     }
   };
 
-  const guardarTrayectoria = async (puntos: PuntoGPS[]): Promise<void> => {
+  const guardarTrayectoria = async (
+    puntos: PuntoGPS[],
+    km: number,
+  ): Promise<void> => {
     try {
-      const key = `${STORAGE_KEY_TRACKING_PREFIJO}${obtenerFechaHoy()}`;
-      await AsyncStorage.setItem(key, JSON.stringify(puntos));
+      const fecha = obtenerFechaHoy();
+      const keyTrayectoria = `${STORAGE_KEY_TRACKING_PREFIJO}${fecha}`;
+      const keyKm = `${STORAGE_KEY_TRACKING_KM_PREFIJO}${fecha}`;
+      await AsyncStorage.multiSet([
+        [keyTrayectoria, JSON.stringify(puntos)],
+        [keyKm, km.toString()],
+      ]);
     } catch (e) {
       console.error("Error guardando trayectoria", e);
     }
@@ -247,10 +271,10 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
-            timeInterval: 3000, // cada 3 seg
-            distanceInterval: 8, // cada 8 metros de cambio
+            timeInterval: 2500, // cada 2.5 seg
+            distanceInterval: 6, // cada 6 metros de cambio
           },
-          (loc) => {
+          async (loc) => {
             if (!montado) return;
 
             const nuevaCoords = {
@@ -262,40 +286,83 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
             // Solo grabar si el tracking está activo
             if (!grabandoRutaRef.current) return;
 
-            // Descartar lecturas con mala precisión (más de 35m de error)
-            if (loc.coords.accuracy && loc.coords.accuracy > 35) return;
+            // Descartar lecturas con mala precisión (más de 65m de error, calibrado para auto)
+            if (loc.coords.accuracy && loc.coords.accuracy > 65) return;
 
-            setTrayectoriaReal((prev) => {
-              const nuevoPunto: PuntoGPS = {
-                latitude: nuevaCoords.latitude,
-                longitude: nuevaCoords.longitude,
-                timestamp: loc.timestamp || Date.now(),
-              };
+            const nuevoPunto: PuntoGPS = {
+              latitude: nuevaCoords.latitude,
+              longitude: nuevaCoords.longitude,
+              timestamp: loc.timestamp || Date.now(),
+            };
 
-              if (prev.length === 0) {
-                const inicial = [nuevoPunto];
-                guardarTrayectoria(inicial);
-                return inicial;
-              }
+            const listaActual = trayectoriaRealRef.current;
+            if (listaActual.length === 0) {
+              const inicial = [nuevoPunto];
+              trayectoriaRealRef.current = inicial;
+              setTrayectoriaReal(inicial);
+              guardarTrayectoria(inicial, 0);
+              return;
+            }
 
-              const ultimo = prev[prev.length - 1];
-              const distKm = calcularDistanciaKm(
-                ultimo.latitude,
-                ultimo.longitude,
-                nuevoPunto.latitude,
-                nuevoPunto.longitude,
+            const ultimo = listaActual[listaActual.length - 1];
+            const distDirectaKm = calcularDistanciaKm(
+              ultimo.latitude,
+              ultimo.longitude,
+              nuevoPunto.latitude,
+              nuevoPunto.longitude,
+            );
+
+            // Filtro antideriva: si se movió menos de 10 metros, ignorar (vendedor detenido)
+            if (distDirectaKm < 0.010) return;
+
+            // Desplazamiento normal por la vía (entre 10m y 70m)
+            if (distDirectaKm < 0.070) {
+              const actualizada = [...listaActual, nuevoPunto];
+              const nuevoKm = kmRecorridosRealesRef.current + distDirectaKm;
+              trayectoriaRealRef.current = actualizada;
+              kmRecorridosRealesRef.current = nuevoKm;
+              setTrayectoriaReal(actualizada);
+              setKmRecorridosReales(nuevoKm);
+              guardarTrayectoria(actualizada, nuevoKm);
+              return;
+            }
+
+            // Salto mayor a 70m (pantalla bloqueada, Waze, curva pronunciada o túnel):
+            // Consultamos OSRM para seguir las calles exactas y sumar los km viales reales
+            if (procesandoSaltoRef.current) return;
+            procesandoSaltoRef.current = true;
+
+            try {
+              const rutaVial = await obtenerRutaVialEntrePuntos(
+                ultimo,
+                nuevoPunto,
               );
+              const puntosParaAgregar =
+                rutaVial.puntos.length > 1
+                  ? rutaVial.puntos.slice(1)
+                  : [nuevoPunto];
 
-              // Filtro antideriva: debe haberse movido al menos 12 metros reales
-              if (distKm >= 0.012) {
-                const actualizada = [...prev, nuevoPunto];
-                setKmRecorridosReales((prevKm) => prevKm + distKm);
-                guardarTrayectoria(actualizada);
-                return actualizada;
-              }
-
-              return prev;
-            });
+              const base = trayectoriaRealRef.current;
+              const actualizada = [...base, ...puntosParaAgregar];
+              const nuevoKm =
+                kmRecorridosRealesRef.current + rutaVial.distanciaKm;
+              trayectoriaRealRef.current = actualizada;
+              kmRecorridosRealesRef.current = nuevoKm;
+              setTrayectoriaReal(actualizada);
+              setKmRecorridosReales(nuevoKm);
+              guardarTrayectoria(actualizada, nuevoKm);
+            } catch {
+              const base = trayectoriaRealRef.current;
+              const actualizada = [...base, nuevoPunto];
+              const nuevoKm = kmRecorridosRealesRef.current + distDirectaKm;
+              trayectoriaRealRef.current = actualizada;
+              kmRecorridosRealesRef.current = nuevoKm;
+              setTrayectoriaReal(actualizada);
+              setKmRecorridosReales(nuevoKm);
+              guardarTrayectoria(actualizada, nuevoKm);
+            } finally {
+              procesandoSaltoRef.current = false;
+            }
           },
         );
       } catch (err) {
@@ -327,9 +394,14 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
           style: "destructive",
           onPress: async () => {
             setTrayectoriaReal([]);
+            trayectoriaRealRef.current = [];
             setKmRecorridosReales(0);
-            const key = `${STORAGE_KEY_TRACKING_PREFIJO}${obtenerFechaHoy()}`;
-            await AsyncStorage.removeItem(key);
+            kmRecorridosRealesRef.current = 0;
+            const fecha = obtenerFechaHoy();
+            await AsyncStorage.multiRemove([
+              `${STORAGE_KEY_TRACKING_PREFIJO}${fecha}`,
+              `${STORAGE_KEY_TRACKING_KM_PREFIJO}${fecha}`,
+            ]);
           },
         },
       ],
