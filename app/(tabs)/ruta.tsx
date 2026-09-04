@@ -1,7 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Location from "expo-location";
-import { useCallback, useState } from "react";
+import { useRouter } from "expo-router";
+import { useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,140 +13,23 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const STORAGE_KEY = "clientes";
-const STORAGE_KEY_VISITAS = "visitas";
-
-interface Cliente {
-  id: string;
-  nombre: string;
-  rut?: string;
-  direccion: string;
-  lat?: number;
-  lng?: number;
-  geoStatus: "pendiente" | "ok" | "error" | "sin_conexion";
-}
-
-interface ClienteConDistancia extends Cliente {
-  distanciaKm: number;
-}
-
-interface RegistroVisita {
-  clienteId: string;
-  horaVisita: string;
-  nombreCliente: string;
-}
-
-type VisitasPorFecha = Record<string, RegistroVisita[]>;
-
-function obtenerFechaHoy(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
-function calcularDistanciaKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function ordenarPorVecinoMasCercano(
-  origenLat: number,
-  origenLng: number,
-  clientes: Cliente[],
-): ClienteConDistancia[] {
-  const pendientes = [...clientes];
-  const ordenados: ClienteConDistancia[] = [];
-  let actualLat = origenLat;
-  let actualLng = origenLng;
-
-  while (pendientes.length > 0) {
-    let indiceMasCercano = 0;
-    let distanciaMinima = Infinity;
-
-    pendientes.forEach((cliente, index) => {
-      const dist = calcularDistanciaKm(
-        actualLat,
-        actualLng,
-        cliente.lat!,
-        cliente.lng!,
-      );
-      if (dist < distanciaMinima) {
-        distanciaMinima = dist;
-        indiceMasCercano = index;
-      }
-    });
-
-    const siguiente = pendientes.splice(indiceMasCercano, 1)[0];
-    ordenados.push({ ...siguiente, distanciaKm: distanciaMinima });
-    actualLat = siguiente.lat!;
-    actualLng = siguiente.lng!;
-  }
-
-  return ordenados;
-}
+import { useClientes } from "@/context/ClientesContext";
+import { ClienteConDistancia } from "@/types/cliente";
+import { obtenerEstadoPrioridad } from "@/services/prioridad";
 
 export default function RutaDelDia() {
-  const [ruta, setRuta] = useState<ClienteConDistancia[]>([]);
-  const [visitadosHoy, setVisitadosHoy] = useState<RegistroVisita[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const cargarVisitasHoy = async (): Promise<RegistroVisita[]> => {
-    const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
-    const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
-    return todasLasVisitas[obtenerFechaHoy()] ?? [];
-  };
-
-  const calcularRuta = useCallback(async (): Promise<void> => {
-    setCargando(true);
-    setError(null);
-
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setError("Necesitamos permiso de ubicación para calcular tu ruta");
-        setCargando(false);
-        return;
-      }
-
-      const posicion = await Location.getCurrentPositionAsync({});
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      const clientes: Cliente[] = data ? JSON.parse(data) : [];
-      const visitas = await cargarVisitasHoy();
-      setVisitadosHoy(visitas);
-
-      const idsVisitados = new Set(visitas.map((v) => v.clienteId));
-
-      const clientesUbicados = clientes.filter(
-        (c) =>
-          c.geoStatus === "ok" && c.lat && c.lng && !idsVisitados.has(c.id),
-      );
-
-      const rutaOrdenada = ordenarPorVecinoMasCercano(
-        posicion.coords.latitude,
-        posicion.coords.longitude,
-        clientesUbicados,
-      );
-
-      setRuta(rutaOrdenada);
-    } catch (e) {
-      console.error(e);
-      setError("No se pudo calcular la ruta");
-    } finally {
-      setCargando(false);
-    }
-  }, []);
+  const router = useRouter();
+  const {
+    ruta,
+    visitadosHoy,
+    kmRecorridosReales,
+    cargandoRuta,
+    errorRuta,
+    calcularRuta,
+    marcarVisitado,
+    deshacerVisita,
+    setModoMapa,
+  } = useClientes();
 
   useFocusEffect(
     useCallback(() => {
@@ -155,46 +37,9 @@ export default function RutaDelDia() {
     }, [calcularRuta]),
   );
 
-  const marcarVisitado = async (
-    cliente: ClienteConDistancia,
-  ): Promise<void> => {
-    const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
-    const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
-    const hoy = obtenerFechaHoy();
-    const visitasDeHoy = todasLasVisitas[hoy] ?? [];
-
-    const nuevaVisita: RegistroVisita = {
-      clienteId: cliente.id,
-      nombreCliente: cliente.nombre,
-      horaVisita: new Date().toLocaleTimeString("es-CL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-
-    todasLasVisitas[hoy] = [...visitasDeHoy, nuevaVisita];
-    await AsyncStorage.setItem(
-      STORAGE_KEY_VISITAS,
-      JSON.stringify(todasLasVisitas),
-    );
-
-    setVisitadosHoy(todasLasVisitas[hoy]);
-    setRuta((prev) => prev.filter((c) => c.id !== cliente.id));
-  };
-
-  const deshacerVisita = async (clienteId: string): Promise<void> => {
-    const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
-    const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
-    const hoy = obtenerFechaHoy();
-    todasLasVisitas[hoy] = (todasLasVisitas[hoy] ?? []).filter(
-      (v) => v.clienteId !== clienteId,
-    );
-    await AsyncStorage.setItem(
-      STORAGE_KEY_VISITAS,
-      JSON.stringify(todasLasVisitas),
-    );
-    setVisitadosHoy(todasLasVisitas[hoy]);
-    calcularRuta();
+  const irAlMapa = () => {
+    setModoMapa("recorrido");
+    router.push("/(tabs)/explore");
   };
 
   const abrirWaze = async (cliente: ClienteConDistancia): Promise<void> => {
@@ -223,25 +68,29 @@ export default function RutaDelDia() {
     ]);
   };
 
-  if (cargando) {
+  if (cargandoRuta && ruta.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <ActivityIndicator size="large" style={{ marginTop: 40 }} />
-        <Text style={styles.vacio}>Calculando tu ruta...</Text>
+        <Text style={styles.vacio}>Calculando tu ruta y kilometraje...</Text>
       </SafeAreaView>
     );
   }
 
-  if (error) {
+  if (errorRuta && ruta.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text style={styles.vacio}>{error}</Text>
+        <Text style={styles.vacio}>{errorRuta}</Text>
+        <TouchableOpacity style={styles.botonReintentar} onPress={calcularRuta}>
+          <Text style={styles.botonReintentarTexto}>Reintentar</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Encabezado Principal */}
       <View style={styles.encabezado}>
         <Text style={styles.titulo}>Tu Ruta de Hoy</Text>
         <TouchableOpacity onPress={calcularRuta}>
@@ -249,10 +98,22 @@ export default function RutaDelDia() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.contador}>
-        {ruta.length} pendientes · {visitadosHoy.length} visitados hoy
-      </Text>
+      {/* Tarjeta Destacada de Kilometraje y Acceso al Mapa */}
+      <View style={styles.tarjetaKilometraje}>
+        <View style={styles.infoKilometraje}>
+          <Text style={styles.etiquetaKm}>RECORRIDO REAL EN VIVO</Text>
+          <Text style={styles.valorKm}>{kmRecorridosReales.toFixed(2)} km</Text>
+          <Text style={styles.resumenParadas}>
+            {ruta.length} clientes pendientes · {visitadosHoy.length} visitados
+          </Text>
+        </View>
 
+        <TouchableOpacity style={styles.botonVerMapa} onPress={irAlMapa}>
+          <Text style={styles.botonVerMapaTexto}>🗺️ Ver mi Ruta</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Lista de Paradas Ordenadas */}
       <FlatList
         style={{ flex: 1 }}
         data={ruta}
@@ -260,22 +121,54 @@ export default function RutaDelDia() {
         ListEmptyComponent={
           <Text style={styles.vacio}>
             {visitadosHoy.length > 0
-              ? "¡Visitaste a todos tus clientes de hoy! 🎉"
-              : "No hay clientes ubicados aún"}
+              ? "¡Completaste todas las visitas de hoy! 🎉"
+              : "No hay clientes ubicados con coordenadas para hoy"}
           </Text>
         }
-        renderItem={({ item, index }) => (
-          <View style={styles.tarjeta}>
-            <View style={styles.numero}>
-              <Text style={styles.numeroTexto}>{index + 1}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.nombreCliente}>{item.nombre}</Text>
-              <Text style={styles.direccionCliente}>{item.direccion}</Text>
-              <Text style={styles.distancia}>
-                {item.distanciaKm.toFixed(1)} km
-              </Text>
-            </View>
+        renderItem={({ item, index }) => {
+          const prioridad = obtenerEstadoPrioridad(item.ultimaVisita);
+
+          return (
+            <View style={styles.tarjeta}>
+              <View style={styles.numero}>
+                <Text style={styles.numeroTexto}>{index + 1}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Text style={styles.nombreCliente}>{item.nombre}</Text>
+                  <View
+                    style={[
+                      styles.badgePrioridad,
+                      { backgroundColor: prioridad.fondoHex },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.badgePrioridadTexto,
+                        { color: prioridad.textoColorHex },
+                      ]}
+                    >
+                      {prioridad.badgeTexto}
+                    </Text>
+                  </View>
+                  {item.geoStatus === "aproximado" && (
+                    <View style={styles.badgeAprox}>
+                      <Text style={styles.badgeAproxTexto}>Aprox.</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.direccionCliente}>{item.direccion}</Text>
+                <Text style={styles.distancia}>
+                  +{item.distanciaKm.toFixed(1)} km desde parada anterior
+                </Text>
+              </View>
             <View style={styles.botonesAccion}>
               <TouchableOpacity
                 style={styles.botonNav}
@@ -291,9 +184,11 @@ export default function RutaDelDia() {
               </TouchableOpacity>
             </View>
           </View>
-        )}
-      />
+        );
+      }}
+    />
 
+      {/* Sección de Clientes Visitados Hoy */}
       {visitadosHoy.length > 0 && (
         <View style={styles.seccionVisitados}>
           <Text style={styles.subtitulo}>Visitados hoy</Text>
@@ -327,9 +222,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   titulo: { fontSize: 24, fontWeight: "bold" },
-  recalcular: { color: "#2563eb", fontSize: 13 },
-  contador: { color: "#666", marginTop: 4, marginBottom: 12, fontSize: 13 },
-  vacio: { textAlign: "center", color: "#999", marginTop: 24 },
+  recalcular: { color: "#2563eb", fontSize: 13, fontWeight: "600" },
+  vacio: { textAlign: "center", color: "#999", marginTop: 28, fontSize: 15 },
+  tarjetaKilometraje: {
+    backgroundColor: "#1e3a8a",
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    marginBottom: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  infoKilometraje: { flex: 1 },
+  etiquetaKm: {
+    color: "#93c5fd",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  valorKm: {
+    color: "#fff",
+    fontSize: 26,
+    fontWeight: "bold",
+    marginVertical: 2,
+  },
+  resumenParadas: {
+    color: "#e0e7ff",
+    fontSize: 12,
+  },
+  botonVerMapa: {
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  botonVerMapaTexto: {
+    color: "#1e3a8a",
+    fontWeight: "bold",
+    fontSize: 13,
+  },
   tarjeta: {
     backgroundColor: "#fff",
     borderRadius: 8,
@@ -349,8 +286,19 @@ const styles = StyleSheet.create({
   },
   numeroTexto: { color: "#fff", fontWeight: "bold" },
   nombreCliente: { fontSize: 16, fontWeight: "600" },
+  badgeAprox: {
+    backgroundColor: "#ffedd5",
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  badgeAproxTexto: {
+    color: "#c2410c",
+    fontSize: 10,
+    fontWeight: "700",
+  },
   direccionCliente: { fontSize: 14, color: "#666", marginTop: 2 },
-  distancia: { fontSize: 12, color: "#999", marginTop: 2 },
+  distancia: { fontSize: 12, color: "#2563eb", marginTop: 2, fontWeight: "500" },
   botonesAccion: { gap: 6 },
   botonNav: {
     backgroundColor: "#16a34a",
@@ -385,4 +333,25 @@ const styles = StyleSheet.create({
   },
   textoVisitado: { color: "#374151", fontSize: 13 },
   deshacer: { color: "#e11d48", fontSize: 12 },
+  botonReintentar: {
+    backgroundColor: "#2563eb",
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginTop: 12,
+  },
+  botonReintentarTexto: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  badgePrioridad: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  badgePrioridadTexto: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
 });

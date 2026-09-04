@@ -4,6 +4,8 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -41,84 +43,90 @@ export default function ListaClientes() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {!conectado && (
-        <View style={styles.bannerOffline}>
-          <Text style={styles.bannerOfflineTexto}>
-            📡 Sin conexión — no se pueden ubicar clientes nuevos ahora
-          </Text>
-        </View>
-      )}
-
-      <Text style={styles.titulo}>Mis Clientes</Text>
-
-      <View style={styles.formulario}>
-        <TextInput
-          style={styles.input}
-          placeholder="RUT (ej: 12345678-9)"
-          value={rut}
-          onChangeText={setRut}
-          autoCapitalize="characters"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre del cliente"
-          value={nombre}
-          onChangeText={setNombre}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Dirección"
-          value={direccion}
-          onChangeText={setDireccion}
-        />
-        <TouchableOpacity
-          style={styles.botonImportar}
-          onPress={importarCSV}
-          disabled={importando}
-        >
-          <Text style={styles.botonImportarTexto}>
-            {importando
-              ? `Geocodificando ${progresoImport.actual}/${progresoImport.total}...`
-              : "📂 Importar desde CSV"}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.botonBorrarTodo}
-          onPress={borrarTodosLosClientes}
-        >
-          <Text style={styles.botonBorrarTodoTexto}>
-            🗑️ Borrar todos los clientes
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.boton, agregando && styles.botonDeshabilitado]}
-          onPress={handleAgregar}
-          disabled={agregando}
-        >
-          <Text style={styles.botonTexto}>
-            {agregando ? "Agregando..." : "+ Agregar Cliente"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={clientes}
-        keyExtractor={(item) => item.id}
-        style={styles.lista}
-        ListEmptyComponent={
-          <Text style={styles.vacio}>Aún no tienes clientes agregados</Text>
-        }
-        renderItem={({ item }) => (
-          <ClienteTarjeta
-            cliente={item}
-            conectado={conectado}
-            onGuardarDireccion={guardarCorreccionDireccion}
-            onGuardarRut={guardarCorreccionRut}
-            onReintentar={reintentarGeocodificacion}
-            onEliminar={eliminarCliente}
-          />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        {!conectado && (
+          <View style={styles.bannerOffline}>
+            <Text style={styles.bannerOfflineTexto}>
+              📡 Sin conexión — no se pueden ubicar clientes nuevos ahora
+            </Text>
+          </View>
         )}
-      />
+
+        <Text style={styles.titulo}>Mis Clientes</Text>
+
+        <View style={styles.formulario}>
+          <TextInput
+            style={styles.input}
+            placeholder="RUT (ej: 12345678-9)"
+            value={rut}
+            onChangeText={setRut}
+            autoCapitalize="characters"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Nombre del cliente"
+            value={nombre}
+            onChangeText={setNombre}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Dirección"
+            value={direccion}
+            onChangeText={setDireccion}
+          />
+          <TouchableOpacity
+            style={styles.botonImportar}
+            onPress={importarCSV}
+            disabled={importando}
+          >
+            <Text style={styles.botonImportarTexto}>
+              {importando
+                ? `Geocodificando ${progresoImport.actual}/${progresoImport.total}...`
+                : "📂 Importar desde CSV"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.botonBorrarTodo}
+            onPress={borrarTodosLosClientes}
+          >
+            <Text style={styles.botonBorrarTodoTexto}>
+              🗑️ Borrar todos los clientes
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.boton, agregando && styles.botonDeshabilitado]}
+            onPress={handleAgregar}
+            disabled={agregando}
+          >
+            <Text style={styles.botonTexto}>
+              {agregando ? "Agregando..." : "+ Agregar Cliente"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <FlatList
+          data={clientes}
+          keyExtractor={(item) => item.id}
+          style={styles.lista}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
+            <Text style={styles.vacio}>Aún no tienes clientes agregados</Text>
+          }
+          renderItem={({ item }) => (
+            <ClienteTarjeta
+              cliente={item}
+              conectado={conectado}
+              onGuardarDireccion={guardarCorreccionDireccion}
+              onGuardarRut={guardarCorreccionRut}
+              onReintentar={reintentarGeocodificacion}
+              onEliminar={eliminarCliente}
+            />
+          )}
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

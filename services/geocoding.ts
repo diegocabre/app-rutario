@@ -21,13 +21,22 @@ async function buscarEnNominatim(query: string): Promise<Coordenadas | null> {
     `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}` +
     `&format=json&limit=1&countrycodes=cl&viewbox=${VIEWBOX_LOS_LAGOS}&bounded=0`;
 
-  const response = await fetch(url, {
-    headers: { "User-Agent": "RutarioApp/1.0" },
-  });
-  const data = await response.json();
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "RutarioApp/1.0 (rutario-app-expo)" },
+    });
 
-  if (data && data.length > 0) {
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (Array.isArray(data) && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch (err) {
+    console.warn("Fallo al consultar Nominatim:", err);
   }
   return null;
 }

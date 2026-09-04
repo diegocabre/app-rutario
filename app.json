@@ -1,20 +1,30 @@
 {
   "expo": {
-    "name": "rutario-app",
-    "slug": "rutario-app",
+    "name": "Ruta DyS",
+    "slug": "ruta-dys",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "rutarioapp",
+    "scheme": "rutadys",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Ruta DyS necesita tu ubicación para registrar tu recorrido y priorizar tus clientes.",
         "LSApplicationQueriesSchemes": ["waze", "comgooglemaps"]
       }
     },
     "android": {
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB7t9ga9UEg-70ItdEEJCn-GpO1BCYcnJk"
+        }
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -22,7 +32,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.diegocabre.rutarioapp"
     },
     "web": {
       "output": "static",
@@ -30,6 +41,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ruta DyS necesita tu ubicación para registrar tu recorrido y priorizar tus clientes."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -46,6 +63,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c7034b0a-61a1-49c2-a549-1a1b3e2b820a"
+      }
     }
   }
 }

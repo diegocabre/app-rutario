@@ -1,4 +1,5 @@
 import { formatoRutValido } from "@/services/rut";
+import { obtenerEstadoPrioridad } from "@/services/prioridad";
 import { Cliente } from "@/types/cliente";
 import { useState } from "react";
 import {
@@ -67,10 +68,36 @@ export default function ClienteTarjeta({
     );
   }
 
+  const prioridad = obtenerEstadoPrioridad(cliente.ultimaVisita);
+
   return (
     <View style={styles.tarjeta}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.nombreCliente}>{cliente.nombre}</Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingRight: 8,
+          }}
+        >
+          <Text style={styles.nombreCliente}>{cliente.nombre}</Text>
+          <View
+            style={[
+              styles.badgePrioridad,
+              { backgroundColor: prioridad.fondoHex },
+            ]}
+          >
+            <Text
+              style={[
+                styles.badgePrioridadTexto,
+                { color: prioridad.textoColorHex },
+              ]}
+            >
+              {prioridad.badgeTexto}
+            </Text>
+          </View>
+        </View>
 
         {editandoRut ? (
           <View style={styles.edicionContainer}>
@@ -165,4 +192,13 @@ const styles = StyleSheet.create({
   },
   botonGuardarTexto: { color: "#fff", fontWeight: "600", fontSize: 13 },
   editarTexto: { color: "#2563eb", fontSize: 13, marginTop: 4 },
+  badgePrioridad: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgePrioridadTexto: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
 });

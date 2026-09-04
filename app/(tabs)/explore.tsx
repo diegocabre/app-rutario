@@ -1,12 +1,24 @@
-import { useCallback, useState } from "react";
-import { StyleSheet, Text, View, TouchableOpacity, Alert } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { Marker, MapPressEvent, MarkerDragStartEndEvent } from "react-native-maps";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import MapView, {
+  MapPressEvent,
+  Marker,
+  MarkerDragStartEndEvent,
+  Polyline,
+} from "react-native-maps";
 import { useFocusEffect } from "@react-navigation/native";
-import { Cliente } from "@/types/cliente";
 
-const STORAGE_KEY = "clientes";
+import { useClientes } from "@/context/ClientesContext";
+import { Cliente, NivelPrioridadVisita } from "@/types/cliente";
+import { obtenerEstadoPrioridad } from "@/services/prioridad";
 
 const REGION_DEFECTO = {
   latitude: -41.3195,
@@ -15,36 +27,78 @@ const REGION_DEFECTO = {
   longitudeDelta: 0.5,
 };
 
+type FiltroPrioridad = "todos" | NivelPrioridadVisita;
+
 export default function MapaClientes() {
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [clienteAjustando, setClienteAjustando] = useState<Cliente | null>(null);
+  const {
+    clientes,
+    actualizarUbicacionManual,
+    posicionVendedor,
+    trayectoriaReal,
+    kmRecorridosReales,
+    grabandoRuta,
+    pausarTracking,
+    reanudarTracking,
+    reiniciarTrayectoriaHoy,
+    calcularRuta,
+    ruta,
+  } = useClientes();
+
+  const [clienteAjustando, setClienteAjustando] = useState<Cliente | null>(
+    null,
+  );
   const [pinTemporal, setPinTemporal] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
 
+  // Filtro de prioridad (Semáforo de calor)
+  const [filtroPrioridad, setFiltroPrioridad] =
+    useState<FiltroPrioridad>("todos");
+
   useFocusEffect(
     useCallback(() => {
-      cargarClientes();
-    }, [])
+      if (ruta.length === 0 && clientes.length > 0) {
+        calcularRuta();
+      }
+    }, [calcularRuta, ruta.length, clientes.length]),
   );
-
-  const cargarClientes = async (): Promise<void> => {
-    try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data) setClientes(JSON.parse(data));
-    } catch (e) {
-      console.error("Error cargando clientes", e);
-    }
-  };
 
   const clientesConPin = clientes.filter(
     (c) =>
-      (c.geoStatus === "ok" || c.geoStatus === "aproximado") && c.lat && c.lng
+      (c.geoStatus === "ok" || c.geoStatus === "aproximado") && c.lat && c.lng,
   );
 
+  // Contadores para el semáforo / mapa de calor
+  const conteoPrioridades = useMemo(() => {
+    let urgentes = 0;
+    let media = 0;
+    let alDia = 0;
+
+    clientesConPin.forEach((c) => {
+      const p = obtenerEstadoPrioridad(c.ultimaVisita);
+      if (p.nivel === "urgente") urgentes++;
+      else if (p.nivel === "media") media++;
+      else if (p.nivel === "al_dia") alDia++;
+    });
+
+    return { urgentes, media, alDia, total: clientesConPin.length };
+  }, [clientesConPin]);
+
+  // Clientes filtrados por semáforo
+  const clientesFiltrados = useMemo(() => {
+    if (filtroPrioridad === "todos") return clientesConPin;
+    return clientesConPin.filter((c) => {
+      const p = obtenerEstadoPrioridad(c.ultimaVisita);
+      return p.nivel === filtroPrioridad;
+    });
+  }, [clientesConPin, filtroPrioridad]);
+
   const clientesSinUbicar = clientes.filter(
-    (c) => c.geoStatus === "error" || c.geoStatus === "no_encontrado"
+    (c) =>
+      c.geoStatus === "error" ||
+      c.geoStatus === "no_encontrado" ||
+      c.geoStatus === "sin_conexion",
   );
 
   const iniciarAjuste = (cliente: Cliente): void => {
@@ -55,7 +109,7 @@ export default function MapaClientes() {
         : {
             latitude: REGION_DEFECTO.latitude,
             longitude: REGION_DEFECTO.longitude,
-          }
+          },
     );
   };
 
@@ -71,22 +125,11 @@ export default function MapaClientes() {
   const guardarAjuste = async (): Promise<void> => {
     if (!clienteAjustando || !pinTemporal) return;
 
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
-    const todos: Cliente[] = data ? JSON.parse(data) : [];
-
-    const actualizados = todos.map((c) =>
-      c.id === clienteAjustando.id
-        ? {
-            ...c,
-            lat: pinTemporal.latitude,
-            lng: pinTemporal.longitude,
-            geoStatus: "ok" as const,
-          }
-        : c
+    await actualizarUbicacionManual(
+      clienteAjustando.id,
+      pinTemporal.latitude,
+      pinTemporal.longitude,
     );
-
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(actualizados));
-    setClientes(actualizados);
     setClienteAjustando(null);
     setPinTemporal(null);
     Alert.alert("Listo", `Ubicación de ${clienteAjustando.nombre} guardada`);
@@ -97,12 +140,130 @@ export default function MapaClientes() {
     setPinTemporal(null);
   };
 
+  // Coordenadas de la trayectoria REAL que va recorriendo el vendedor
+  const puntosRecorridoReal = trayectoriaReal.map((p) => ({
+    latitude: p.latitude,
+    longitude: p.longitude,
+  }));
+
+  if (
+    posicionVendedor &&
+    puntosRecorridoReal.length > 0 &&
+    (puntosRecorridoReal[puntosRecorridoReal.length - 1].latitude !==
+      posicionVendedor.latitude ||
+      puntosRecorridoReal[puntosRecorridoReal.length - 1].longitude !==
+        posicionVendedor.longitude)
+  ) {
+    puntosRecorridoReal.push(posicionVendedor);
+  }
+
+  const initialRegion = posicionVendedor
+    ? {
+        latitude: posicionVendedor.latitude,
+        longitude: posicionVendedor.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      }
+    : clientesConPin.length > 0
+      ? {
+          latitude: clientesConPin[0].lat!,
+          longitude: clientesConPin[0].lng!,
+          latitudeDelta: 0.15,
+          longitudeDelta: 0.15,
+        }
+      : REGION_DEFECTO;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {clienteAjustando ? (
+      {/* Barra de Filtros del Mapa de Calor (Semáforo de Prioridades) */}
+      <View style={styles.contenedorFiltros}>
+        <Text style={styles.tituloFiltro}>Prioridad de Visitas:</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollFiltros}
+        >
+          <TouchableOpacity
+            style={[
+              styles.chipFiltro,
+              filtroPrioridad === "todos" && styles.chipFiltroActivo,
+            ]}
+            onPress={() => setFiltroPrioridad("todos")}
+          >
+            <Text
+              style={[
+                styles.chipFiltroTexto,
+                filtroPrioridad === "todos" && styles.chipFiltroTextoActivo,
+              ]}
+            >
+              Todos ({conteoPrioridades.total})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.chipFiltro,
+              styles.chipRojo,
+              filtroPrioridad === "urgente" && styles.chipRojoActivo,
+            ]}
+            onPress={() => setFiltroPrioridad("urgente")}
+          >
+            <Text
+              style={[
+                styles.chipFiltroTexto,
+                styles.chipRojoTexto,
+                filtroPrioridad === "urgente" && styles.chipFiltroTextoActivo,
+              ]}
+            >
+              🔴 &gt;30 días ({conteoPrioridades.urgentes})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.chipFiltro,
+              styles.chipAmarillo,
+              filtroPrioridad === "media" && styles.chipAmarilloActivo,
+            ]}
+            onPress={() => setFiltroPrioridad("media")}
+          >
+            <Text
+              style={[
+                styles.chipFiltroTexto,
+                styles.chipAmarilloTexto,
+                filtroPrioridad === "media" && styles.chipFiltroTextoActivo,
+              ]}
+            >
+              🟡 15-30 días ({conteoPrioridades.media})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.chipFiltro,
+              styles.chipVerde,
+              filtroPrioridad === "al_dia" && styles.chipVerdeActivo,
+            ]}
+            onPress={() => setFiltroPrioridad("al_dia")}
+          >
+            <Text
+              style={[
+                styles.chipFiltroTexto,
+                styles.chipVerdeTexto,
+                filtroPrioridad === "al_dia" && styles.chipFiltroTextoActivo,
+              ]}
+            >
+              🟢 &lt;15 días ({conteoPrioridades.alDia})
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Banner de Ajuste Manual */}
+      {clienteAjustando && (
         <View style={styles.bannerAjuste}>
           <Text style={styles.bannerAjusteTexto}>
-            📍 Arrastra el pin azul o toca el mapa para ubicar a{" "}
+            📍 Toca el mapa o arrastra el pin azul para ubicar a{" "}
             {clienteAjustando.nombre}
           </Text>
           <View style={styles.bannerBotones}>
@@ -117,41 +278,52 @@ export default function MapaClientes() {
             </TouchableOpacity>
           </View>
         </View>
-      ) : (
-        <View style={styles.bannerAyuda}>
-          <Text style={styles.bannerAyudaTexto}>
-            💡 Toca cualquier pin para corregir su ubicación exacta
-          </Text>
-        </View>
       )}
 
       <MapView
         style={styles.mapa}
-        initialRegion={
-          clientesConPin.length > 0
-            ? {
-                latitude: clientesConPin[0].lat!,
-                longitude: clientesConPin[0].lng!,
-                latitudeDelta: 0.15,
-                longitudeDelta: 0.15,
-              }
-            : REGION_DEFECTO
-        }
+        initialRegion={initialRegion}
         onPress={tocarMapa}
+        showsUserLocation={false}
       >
-        {clientesConPin
-          .filter((c) => c.id !== clienteAjustando?.id)
-          .map((cliente) => (
-            <Marker
-              key={cliente.id}
-              coordinate={{ latitude: cliente.lat!, longitude: cliente.lng! }}
-              title={cliente.nombre}
-              description={`${cliente.direccion} · Toca para reubicar`}
-              pinColor={cliente.geoStatus === "aproximado" ? "orange" : "red"}
-              onPress={() => iniciarAjuste(cliente)}
-            />
-          ))}
+        {/* Línea Azul del Recorrido Real del Vendedor */}
+        {puntosRecorridoReal.length > 1 && (
+          <Polyline
+            coordinates={puntosRecorridoReal}
+            strokeColor="#2563eb"
+            strokeWidth={5}
+          />
+        )}
 
+        {/* Marcador en Vivo del Vendedor */}
+        {posicionVendedor && (
+          <Marker
+            coordinate={posicionVendedor}
+            title="📍 Tú estás aquí"
+            description="Tu ubicación actual en vivo"
+            pinColor="green"
+          />
+        )}
+
+        {/* Pines de los Clientes con Semáforo de Calor */}
+        {clientesFiltrados
+          .filter((c) => c.id !== clienteAjustando?.id)
+          .map((cliente) => {
+            const prioridad = obtenerEstadoPrioridad(cliente.ultimaVisita);
+
+            return (
+              <Marker
+                key={cliente.id}
+                coordinate={{ latitude: cliente.lat!, longitude: cliente.lng! }}
+                title={`${prioridad.badgeTexto} · ${cliente.nombre}`}
+                description={`${cliente.direccion} — ${prioridad.etiqueta}`}
+                pinColor={prioridad.colorPin}
+                onPress={() => iniciarAjuste(cliente)}
+              />
+            );
+          })}
+
+        {/* Pin temporal para ajuste */}
         {pinTemporal && (
           <Marker
             coordinate={pinTemporal}
@@ -163,12 +335,75 @@ export default function MapaClientes() {
         )}
       </MapView>
 
+      {/* Tarjeta Flotante con el Recorrido Real del Vendedor */}
+      {!clienteAjustando && (
+        <View style={styles.tarjetaResumenFlotante}>
+          <View style={styles.filaResumen}>
+            <View style={{ flex: 1 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <View
+                  style={[
+                    styles.indicadorPunto,
+                    grabandoRuta
+                      ? styles.indicadorGrabando
+                      : styles.indicadorPausado,
+                  ]}
+                />
+                <Text style={styles.estadoTexto}>
+                  {grabandoRuta ? "Ruta en vivo activa" : "Tracking pausado"}
+                </Text>
+              </View>
+              <Text style={styles.tituloKm}>
+                {kmRecorridosReales.toFixed(2)} km recorridos hoy
+              </Text>
+              <Text style={styles.subtituloKm}>
+                {conteoPrioridades.urgentes} urgentes 🔴 ·{" "}
+                {conteoPrioridades.media} en alerta 🟡
+              </Text>
+            </View>
+
+            <View style={styles.accionesTracking}>
+              <TouchableOpacity
+                style={[
+                  styles.botonTracking,
+                  grabandoRuta
+                    ? styles.botonPausar
+                    : styles.botonReanudar,
+                ]}
+                onPress={grabandoRuta ? pausarTracking : reanudarTracking}
+              >
+                <Text
+                  style={[
+                    styles.botonTrackingTexto,
+                    grabandoRuta
+                      ? styles.botonPausarTexto
+                      : styles.botonReanudarTexto,
+                  ]}
+                >
+                  {grabandoRuta ? "⏸️ Pausar" : "▶️ Grabar"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.botonReiniciar}
+                onPress={reiniciarTrayectoriaHoy}
+              >
+                <Text style={styles.botonReiniciarTexto}>🔄</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Lista inferior para ubicar clientes pendientes */}
       {!clienteAjustando && clientesSinUbicar.length > 0 && (
         <View style={styles.listaPorCorregir}>
           <Text style={styles.tituloLista}>
             Sin ubicar todavía ({clientesSinUbicar.length})
           </Text>
-          {clientesSinUbicar.slice(0, 4).map((cliente) => (
+          {clientesSinUbicar.slice(0, 3).map((cliente) => (
             <TouchableOpacity
               key={cliente.id}
               style={styles.filaPorCorregir}
@@ -185,7 +420,80 @@ export default function MapaClientes() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  contenedorFiltros: {
+    backgroundColor: "#fff",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  tituloFiltro: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#6b7280",
+    textTransform: "uppercase",
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  scrollFiltros: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  chipFiltro: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  chipFiltroActivo: {
+    backgroundColor: "#1e3a8a",
+    borderColor: "#1e3a8a",
+  },
+  chipFiltroTexto: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#4b5563",
+  },
+  chipFiltroTextoActivo: {
+    color: "#fff",
+  },
+  chipRojo: {
+    backgroundColor: "#fee2e2",
+    borderColor: "#fecaca",
+  },
+  chipRojoActivo: {
+    backgroundColor: "#dc2626",
+    borderColor: "#dc2626",
+  },
+  chipRojoTexto: {
+    color: "#991b1b",
+  },
+  chipAmarillo: {
+    backgroundColor: "#fef9c3",
+    borderColor: "#fef08a",
+  },
+  chipAmarilloActivo: {
+    backgroundColor: "#ca8a04",
+    borderColor: "#ca8a04",
+  },
+  chipAmarilloTexto: {
+    color: "#854d0e",
+  },
+  chipVerde: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#bbf7d0",
+  },
+  chipVerdeActivo: {
+    backgroundColor: "#16a34a",
+    borderColor: "#16a34a",
+  },
+  chipVerdeTexto: {
+    color: "#166534",
+  },
   mapa: { flex: 1 },
   bannerAjuste: {
     backgroundColor: "#dbeafe",
@@ -204,14 +512,104 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   bannerGuardarTexto: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  bannerAyuda: { backgroundColor: "#f3f4f6", padding: 8 },
-  bannerAyudaTexto: { fontSize: 12, color: "#6b7280", textAlign: "center" },
+  tarjetaResumenFlotante: {
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    right: 16,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  filaResumen: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  indicadorPunto: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  indicadorGrabando: {
+    backgroundColor: "#16a34a",
+  },
+  indicadorPausado: {
+    backgroundColor: "#eab308",
+  },
+  estadoTexto: {
+    fontSize: 11,
+    color: "#6b7280",
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  tituloKm: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1e3a8a",
+    marginTop: 2,
+  },
+  subtituloKm: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  accionesTracking: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  botonTracking: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  botonPausar: {
+    backgroundColor: "#fef3c7",
+    borderColor: "#fde68a",
+  },
+  botonPausarTexto: {
+    color: "#92400e",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  botonReanudar: {
+    backgroundColor: "#dcfce7",
+    borderColor: "#bbf7d0",
+  },
+  botonReanudarTexto: {
+    color: "#15803d",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  botonTrackingTexto: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  botonReiniciar: {
+    backgroundColor: "#f3f4f6",
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  botonReiniciarTexto: {
+    fontSize: 14,
+  },
   listaPorCorregir: {
     backgroundColor: "#fff",
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: "#eee",
-    maxHeight: 180,
+    maxHeight: 160,
   },
   tituloLista: { fontWeight: "600", marginBottom: 6, color: "#374151" },
   filaPorCorregir: {

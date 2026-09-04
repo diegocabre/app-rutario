@@ -22,6 +22,8 @@ const MAPPING = {
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
   "map.fill": "map",
+  "person.2.fill": "people",
+  "location.fill": "near-me",
 } as IconMapping;
 
 /**
