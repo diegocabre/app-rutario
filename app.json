@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Ruta DyS",
-    "slug": "ruta-dys",
+    "slug": "rutario-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
