@@ -1,5 +1,5 @@
 import ClienteTarjeta from "@/components/ClienteTarjeta";
-import { useClientes } from "@/hooks/use-clientes";
+import { useClientes } from "@/context/ClientesContext";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { useState } from "react";
 import {
