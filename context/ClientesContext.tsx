@@ -121,7 +121,7 @@ interface ClientesContextType {
   cargandoRuta: boolean;
   errorRuta: string | null;
   calcularRuta: () => Promise<void>;
-  marcarVisitado: (cliente: ClienteConDistancia) => Promise<void>;
+  marcarVisitado: (cliente: Cliente | ClienteConDistancia) => Promise<void>;
   deshacerVisita: (clienteId: string) => Promise<void>;
 
   // Tracking GPS en Vivo del Recorrido Real del Vendedor
@@ -781,7 +781,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   }, [clientes]);
 
   const marcarVisitado = async (
-    cliente: ClienteConDistancia,
+    cliente: Cliente | ClienteConDistancia,
   ): Promise<void> => {
     const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
     const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};

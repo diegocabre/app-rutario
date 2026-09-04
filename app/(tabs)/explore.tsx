@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -45,11 +46,15 @@ export default function MapaClientes() {
     reiniciarTrayectoriaHoy,
     calcularRuta,
     ruta,
+    marcarVisitado,
+    visitadosHoy,
   } = useClientes();
 
   const [clienteAjustando, setClienteAjustando] = useState<Cliente | null>(
     null,
   );
+  const [clienteSeleccionado, setClienteSeleccionado] =
+    useState<Cliente | null>(null);
   const [pinTemporal, setPinTemporal] = useState<{
     latitude: number;
     longitude: number;
@@ -117,8 +122,11 @@ export default function MapaClientes() {
   };
 
   const tocarMapa = (evento: MapPressEvent): void => {
-    if (!clienteAjustando) return;
-    setPinTemporal(evento.nativeEvent.coordinate);
+    if (clienteAjustando) {
+      setPinTemporal(evento.nativeEvent.coordinate);
+    } else {
+      setClienteSeleccionado(null);
+    }
   };
 
   const arrastrarPin = (evento: MarkerDragStartEndEvent): void => {
@@ -141,6 +149,41 @@ export default function MapaClientes() {
   const cancelarAjuste = (): void => {
     setClienteAjustando(null);
     setPinTemporal(null);
+  };
+
+  const abrirWaze = async (lat: number, lng: number): Promise<void> => {
+    const url = `waze://?ll=${lat},${lng}&navigate=yes`;
+    const puedeAbrir = await Linking.canOpenURL(url);
+    if (puedeAbrir) {
+      Linking.openURL(url);
+    } else {
+      Linking.openURL(`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`);
+    }
+  };
+
+  const abrirGoogleMaps = (lat: number, lng: number): void => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    Linking.openURL(url);
+  };
+
+  const elegirNavegacion = (cliente: Cliente): void => {
+    if (!cliente.lat || !cliente.lng) return;
+    Alert.alert("Navegar con", `¿Cómo quieres llegar a ${cliente.nombre}?`, [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Waze", onPress: () => abrirWaze(cliente.lat!, cliente.lng!) },
+      {
+        text: "Google Maps",
+        onPress: () => abrirGoogleMaps(cliente.lat!, cliente.lng!),
+      },
+    ]);
+  };
+
+  const manejarMarcarVisitado = async (cliente: Cliente): Promise<void> => {
+    await marcarVisitado(cliente);
+    setClienteSeleccionado({
+      ...cliente,
+      ultimaVisita: new Date().toISOString(),
+    });
   };
 
   // Coordenadas de la trayectoria REAL que va recorriendo el vendedor
@@ -316,12 +359,12 @@ export default function MapaClientes() {
 
             return (
               <Marker
-                key={cliente.id}
+                key={`pin-${cliente.id}-${cliente.ultimaVisita || "sin-visita"}-${prioridad.colorPin}`}
                 coordinate={{ latitude: cliente.lat!, longitude: cliente.lng! }}
                 title={`${prioridad.badgeTexto} · ${cliente.nombre}`}
                 description={`${cliente.direccion} — ${prioridad.etiqueta}`}
                 pinColor={prioridad.colorPin}
-                onPress={() => iniciarAjuste(cliente)}
+                onPress={() => setClienteSeleccionado(cliente)}
               />
             );
           })}
@@ -338,8 +381,103 @@ export default function MapaClientes() {
         )}
       </MapView>
 
+      {/* Tarjeta Flotante de Cliente Seleccionado en el Mapa */}
+      {clienteSeleccionado && !clienteAjustando && (() => {
+        const prioridad = obtenerEstadoPrioridad(
+          clienteSeleccionado.ultimaVisita,
+        );
+        const yaVisitadoHoy = visitadosHoy.some(
+          (v) => v.clienteId === clienteSeleccionado.id,
+        );
+
+        return (
+          <View style={styles.tarjetaClienteFlotante}>
+            <View style={styles.encabezadoClienteFlotante}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Text style={styles.nombreClienteFlotante} numberOfLines={1}>
+                    {clienteSeleccionado.nombre}
+                  </Text>
+                  <View
+                    style={[
+                      styles.badgePrioridadFlotante,
+                      { backgroundColor: prioridad.fondoHex },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.badgePrioridadFlotanteTexto,
+                        { color: prioridad.textoColorHex },
+                      ]}
+                    >
+                      {prioridad.badgeTexto}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.direccionClienteFlotante} numberOfLines={1}>
+                  {clienteSeleccionado.direccion}
+                </Text>
+                <Text style={styles.etiquetaClienteFlotante}>
+                  {prioridad.etiqueta}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setClienteSeleccionado(null)}
+                style={styles.botonCerrarCard}
+              >
+                <Text style={styles.botonCerrarTexto}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.accionesClienteFlotante}>
+              <TouchableOpacity
+                style={styles.botonAccionNav}
+                onPress={() => elegirNavegacion(clienteSeleccionado)}
+              >
+                <Text style={styles.botonAccionNavTexto}>🧭 Ir</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.botonAccionVisitar,
+                  yaVisitadoHoy && styles.botonAccionYaVisitado,
+                ]}
+                onPress={() => manejarMarcarVisitado(clienteSeleccionado)}
+              >
+                <Text
+                  style={[
+                    styles.botonAccionVisitarTexto,
+                    yaVisitadoHoy && styles.botonAccionYaVisitadoTexto,
+                  ]}
+                >
+                  {yaVisitadoHoy ? "✅ Visitado hoy" : "✓ Marcar visité"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.botonAccionUbicar}
+                onPress={() => {
+                  iniciarAjuste(clienteSeleccionado);
+                  setClienteSeleccionado(null);
+                }}
+              >
+                <Text style={styles.botonAccionUbicarTexto}>📍 Mover</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        );
+      })()}
+
       {/* Tarjeta Flotante con el Recorrido Real del Vendedor */}
-      {!clienteAjustando && (
+      {!clienteSeleccionado && !clienteAjustando && (
         <View style={styles.tarjetaResumenFlotante}>
           <View style={styles.filaResumen}>
             <View style={{ flex: 1 }}>
@@ -624,4 +762,116 @@ const styles = StyleSheet.create({
   },
   nombrePorCorregir: { fontSize: 14, color: "#374151" },
   tocarTexto: { fontSize: 13, color: "#2563eb" },
+  tarjetaClienteFlotante: {
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    right: 16,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  encabezadoClienteFlotante: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+  nombreClienteFlotante: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111827",
+    maxWidth: 200,
+  },
+  badgePrioridadFlotante: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgePrioridadFlotanteTexto: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  direccionClienteFlotante: {
+    fontSize: 13,
+    color: "#4b5563",
+    marginTop: 2,
+  },
+  etiquetaClienteFlotante: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginTop: 2,
+    fontWeight: "500",
+  },
+  botonCerrarCard: {
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  botonCerrarTexto: {
+    fontSize: 12,
+    color: "#6b7280",
+    fontWeight: "bold",
+  },
+  accionesClienteFlotante: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  botonAccionNav: {
+    backgroundColor: "#16a34a",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  botonAccionNavTexto: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 13,
+  },
+  botonAccionVisitar: {
+    flex: 1,
+    backgroundColor: "#2563eb",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  botonAccionYaVisitado: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  botonAccionVisitarTexto: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 13,
+  },
+  botonAccionYaVisitadoTexto: {
+    color: "#15803d",
+  },
+  botonAccionUbicar: {
+    backgroundColor: "#f3f4f6",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  botonAccionUbicarTexto: {
+    color: "#374151",
+    fontWeight: "600",
+    fontSize: 12,
+  },
 });
