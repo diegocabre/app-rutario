@@ -2,10 +2,16 @@ export interface FilaCSV {
   nombre: string;
   rut: string;
   direccion: string;
-  ultimaVisita?: string;
 }
 
-function parsearLineaCSV(linea: string): string[] {
+// Detecta si el archivo usa ";" o "," como separador, mirando la primera línea
+function detectarSeparador(primeraLinea: string): string {
+  const puntoYComa = (primeraLinea.match(/;/g) || []).length;
+  const coma = (primeraLinea.match(/,/g) || []).length;
+  return puntoYComa > coma ? ";" : ",";
+}
+
+function parsearLinea(linea: string, separador: string): string[] {
   const resultado: string[] = [];
   let actual = "";
   let dentroDeComillas = false;
@@ -14,7 +20,7 @@ function parsearLineaCSV(linea: string): string[] {
     const char = linea[i];
     if (char === '"') {
       dentroDeComillas = !dentroDeComillas;
-    } else if (char === "," && !dentroDeComillas) {
+    } else if (char === separador && !dentroDeComillas) {
       resultado.push(actual.trim());
       actual = "";
     } else {
@@ -32,15 +38,14 @@ export function parsearCSV(contenido: string): FilaCSV[] {
 
   if (lineas.length === 0) return [];
 
-  const encabezado = parsearLineaCSV(lineas[0]).map((h) =>
+  const separador = detectarSeparador(lineas[0]);
+
+  const encabezado = parsearLinea(lineas[0], separador).map((h) =>
     h.toLowerCase().trim(),
   );
   const indiceNombre = encabezado.findIndex((h) => h.includes("nombre"));
   const indiceRut = encabezado.findIndex((h) => h.includes("rut"));
   const indiceDireccion = encabezado.findIndex((h) => h.includes("direcc"));
-  const indiceUltimaVisita = encabezado.findIndex(
-    (h) => h.includes("visita") || h.includes("fecha"),
-  );
 
   if (indiceNombre === -1 || indiceRut === -1 || indiceDireccion === -1) {
     throw new Error(
@@ -50,22 +55,12 @@ export function parsearCSV(contenido: string): FilaCSV[] {
 
   const filas: FilaCSV[] = [];
   for (let i = 1; i < lineas.length; i++) {
-    const valores = parsearLineaCSV(lineas[i]);
+    const valores = parsearLinea(lineas[i], separador);
     const nombre = valores[indiceNombre]?.trim();
     const rut = valores[indiceRut]?.trim();
     const direccion = valores[indiceDireccion]?.trim();
-    const ultimaVisita =
-      indiceUltimaVisita !== -1
-        ? valores[indiceUltimaVisita]?.trim()
-        : undefined;
-
     if (nombre && rut && direccion) {
-      filas.push({
-        nombre,
-        rut,
-        direccion,
-        ultimaVisita: ultimaVisita || undefined,
-      });
+      filas.push({ nombre, rut, direccion });
     }
   }
 
