@@ -2,9 +2,9 @@ export interface FilaCSV {
   nombre: string;
   rut: string;
   direccion: string;
+  ultimaVisita?: string;
 }
 
-// Detecta si el archivo usa ";" o "," como separador, mirando la primera línea
 function detectarSeparador(primeraLinea: string): string {
   const puntoYComa = (primeraLinea.match(/;/g) || []).length;
   const coma = (primeraLinea.match(/,/g) || []).length;
@@ -46,6 +46,10 @@ export function parsearCSV(contenido: string): FilaCSV[] {
   const indiceNombre = encabezado.findIndex((h) => h.includes("nombre"));
   const indiceRut = encabezado.findIndex((h) => h.includes("rut"));
   const indiceDireccion = encabezado.findIndex((h) => h.includes("direcc"));
+  // Columna opcional: acepta encabezados como "ultima visita", "última_visita", "fecha visita"
+  const indiceUltimaVisita = encabezado.findIndex(
+    (h) => h.includes("visita") || h.includes("ultima"),
+  );
 
   if (indiceNombre === -1 || indiceRut === -1 || indiceDireccion === -1) {
     throw new Error(
@@ -59,8 +63,13 @@ export function parsearCSV(contenido: string): FilaCSV[] {
     const nombre = valores[indiceNombre]?.trim();
     const rut = valores[indiceRut]?.trim();
     const direccion = valores[indiceDireccion]?.trim();
+    const ultimaVisita =
+      indiceUltimaVisita !== -1
+        ? valores[indiceUltimaVisita]?.trim() || undefined
+        : undefined;
+
     if (nombre && rut && direccion) {
-      filas.push({ nombre, rut, direccion });
+      filas.push({ nombre, rut, direccion, ultimaVisita });
     }
   }
 

@@ -1,3 +1,5 @@
+import { useFocusEffect } from "@react-navigation/native";
+import { useKeepAwake } from "expo-keep-awake";
 import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
@@ -8,19 +10,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, {
   MapPressEvent,
   Marker,
   MarkerDragStartEndEvent,
   Polyline,
 } from "react-native-maps";
-import { useFocusEffect } from "@react-navigation/native";
-import { useKeepAwake } from "expo-keep-awake";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useClientes } from "@/context/ClientesContext";
-import { Cliente, NivelPrioridadVisita } from "@/types/cliente";
 import { obtenerEstadoPrioridad } from "@/services/prioridad";
+import { Cliente, NivelPrioridadVisita } from "@/types/cliente";
 
 const REGION_DEFECTO = {
   latitude: -41.3195,
@@ -107,6 +107,9 @@ export default function MapaClientes() {
       c.geoStatus === "error" ||
       c.geoStatus === "no_encontrado" ||
       c.geoStatus === "sin_conexion",
+  );
+  const clientesAproximados = clientes.filter(
+    (c) => c.geoStatus === "aproximado",
   );
 
   const iniciarAjuste = (cliente: Cliente): void => {
@@ -364,7 +367,13 @@ export default function MapaClientes() {
                 title={`${prioridad.badgeTexto} · ${cliente.nombre}`}
                 description={`${cliente.direccion} — ${prioridad.etiqueta}`}
                 pinColor={prioridad.colorPin}
-                onPress={() => setClienteSeleccionado(cliente)}
+                onPress={() => {
+                  if (clienteAjustando) {
+                    iniciarAjuste(cliente);
+                  } else {
+                    setClienteSeleccionado(cliente);
+                  }
+                }}
               />
             );
           })}
@@ -382,99 +391,107 @@ export default function MapaClientes() {
       </MapView>
 
       {/* Tarjeta Flotante de Cliente Seleccionado en el Mapa */}
-      {clienteSeleccionado && !clienteAjustando && (() => {
-        const prioridad = obtenerEstadoPrioridad(
-          clienteSeleccionado.ultimaVisita,
-        );
-        const yaVisitadoHoy = visitadosHoy.some(
-          (v) => v.clienteId === clienteSeleccionado.id,
-        );
+      {clienteSeleccionado &&
+        !clienteAjustando &&
+        (() => {
+          const prioridad = obtenerEstadoPrioridad(
+            clienteSeleccionado.ultimaVisita,
+          );
+          const yaVisitadoHoy = visitadosHoy.some(
+            (v) => v.clienteId === clienteSeleccionado.id,
+          );
 
-        return (
-          <View style={styles.tarjetaClienteFlotante}>
-            <View style={styles.encabezadoClienteFlotante}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <Text style={styles.nombreClienteFlotante} numberOfLines={1}>
-                    {clienteSeleccionado.nombre}
-                  </Text>
+          return (
+            <View style={styles.tarjetaClienteFlotante}>
+              <View style={styles.encabezadoClienteFlotante}>
+                <View style={{ flex: 1, marginRight: 8 }}>
                   <View
-                    style={[
-                      styles.badgePrioridadFlotante,
-                      { backgroundColor: prioridad.fondoHex },
-                    ]}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
+                    }}
                   >
                     <Text
+                      style={styles.nombreClienteFlotante}
+                      numberOfLines={1}
+                    >
+                      {clienteSeleccionado.nombre}
+                    </Text>
+                    <View
                       style={[
-                        styles.badgePrioridadFlotanteTexto,
-                        { color: prioridad.textoColorHex },
+                        styles.badgePrioridadFlotante,
+                        { backgroundColor: prioridad.fondoHex },
                       ]}
                     >
-                      {prioridad.badgeTexto}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.badgePrioridadFlotanteTexto,
+                          { color: prioridad.textoColorHex },
+                        ]}
+                      >
+                        {prioridad.badgeTexto}
+                      </Text>
+                    </View>
                   </View>
+                  <Text
+                    style={styles.direccionClienteFlotante}
+                    numberOfLines={1}
+                  >
+                    {clienteSeleccionado.direccion}
+                  </Text>
+                  <Text style={styles.etiquetaClienteFlotante}>
+                    {prioridad.etiqueta}
+                  </Text>
                 </View>
-                <Text style={styles.direccionClienteFlotante} numberOfLines={1}>
-                  {clienteSeleccionado.direccion}
-                </Text>
-                <Text style={styles.etiquetaClienteFlotante}>
-                  {prioridad.etiqueta}
-                </Text>
+
+                <TouchableOpacity
+                  onPress={() => setClienteSeleccionado(null)}
+                  style={styles.botonCerrarCard}
+                >
+                  <Text style={styles.botonCerrarTexto}>✕</Text>
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                onPress={() => setClienteSeleccionado(null)}
-                style={styles.botonCerrarCard}
-              >
-                <Text style={styles.botonCerrarTexto}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.accionesClienteFlotante}>
-              <TouchableOpacity
-                style={styles.botonAccionNav}
-                onPress={() => elegirNavegacion(clienteSeleccionado)}
-              >
-                <Text style={styles.botonAccionNavTexto}>🧭 Ir</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.botonAccionVisitar,
-                  yaVisitadoHoy && styles.botonAccionYaVisitado,
-                ]}
-                onPress={() => manejarMarcarVisitado(clienteSeleccionado)}
-              >
-                <Text
-                  style={[
-                    styles.botonAccionVisitarTexto,
-                    yaVisitadoHoy && styles.botonAccionYaVisitadoTexto,
-                  ]}
+              <View style={styles.accionesClienteFlotante}>
+                <TouchableOpacity
+                  style={styles.botonAccionNav}
+                  onPress={() => elegirNavegacion(clienteSeleccionado)}
                 >
-                  {yaVisitadoHoy ? "✅ Visitado hoy" : "✓ Marcar visité"}
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.botonAccionNavTexto}>🧭 Ir</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.botonAccionUbicar}
-                onPress={() => {
-                  iniciarAjuste(clienteSeleccionado);
-                  setClienteSeleccionado(null);
-                }}
-              >
-                <Text style={styles.botonAccionUbicarTexto}>📍 Mover</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.botonAccionVisitar,
+                    yaVisitadoHoy && styles.botonAccionYaVisitado,
+                  ]}
+                  onPress={() => manejarMarcarVisitado(clienteSeleccionado)}
+                >
+                  <Text
+                    style={[
+                      styles.botonAccionVisitarTexto,
+                      yaVisitadoHoy && styles.botonAccionYaVisitadoTexto,
+                    ]}
+                  >
+                    {yaVisitadoHoy ? "✅ Visitado hoy" : "✓ Marcar visité"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.botonAccionUbicar}
+                  onPress={() => {
+                    iniciarAjuste(clienteSeleccionado);
+                    setClienteSeleccionado(null);
+                  }}
+                >
+                  <Text style={styles.botonAccionUbicarTexto}>📍 Mover</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        );
-      })()}
+          );
+        })()}
 
       {/* Tarjeta Flotante con el Recorrido Real del Vendedor */}
       {!clienteSeleccionado && !clienteAjustando && (
@@ -509,9 +526,7 @@ export default function MapaClientes() {
               <TouchableOpacity
                 style={[
                   styles.botonTracking,
-                  grabandoRuta
-                    ? styles.botonPausar
-                    : styles.botonReanudar,
+                  grabandoRuta ? styles.botonPausar : styles.botonReanudar,
                 ]}
                 onPress={grabandoRuta ? pausarTracking : reanudarTracking}
               >
@@ -552,6 +567,23 @@ export default function MapaClientes() {
             >
               <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
               <Text style={styles.tocarTexto}>Ubicar →</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {!clienteAjustando && clientesAproximados.length > 0 && (
+        <View style={styles.listaPorCorregir}>
+          <Text style={styles.tituloLista}>
+            🟠 Ubicación aproximada, revisar ({clientesAproximados.length})
+          </Text>
+          {clientesAproximados.slice(0, 3).map((cliente) => (
+            <TouchableOpacity
+              key={cliente.id}
+              style={styles.filaPorCorregir}
+              onPress={() => iniciarAjuste(cliente)}
+            >
+              <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
+              <Text style={styles.tocarTexto}>Ajustar →</Text>
             </TouchableOpacity>
           ))}
         </View>
