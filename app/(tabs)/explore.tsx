@@ -345,13 +345,19 @@ export default function MapaClientes() {
         )}
 
         {/* Marcador en Vivo del Vendedor */}
+        {/* Marcador en Vivo del Vendedor — punto azul distintivo, no confundible con pines de clientes */}
         {posicionVendedor && (
           <Marker
             coordinate={posicionVendedor}
             title="📍 Tú estás aquí"
             description="Tu ubicación actual en vivo"
-            pinColor="green"
-          />
+            anchor={{ x: 0.5, y: 0.5 }}
+            flat
+          >
+            <View style={styles.puntoVendedorHalo}>
+              <View style={styles.puntoVendedorCentro} />
+            </View>
+          </Marker>
         )}
 
         {/* Pines de los Clientes con Semáforo de Calor */}
@@ -905,5 +911,21 @@ const styles = StyleSheet.create({
     color: "#374151",
     fontWeight: "600",
     fontSize: 12,
+  },
+  puntoVendedorHalo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(37, 99, 235, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  puntoVendedorCentro: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#2563eb",
+    borderWidth: 3,
+    borderColor: "#fff",
   },
 });
