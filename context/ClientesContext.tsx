@@ -1,7 +1,9 @@
+import { generarArchivoAdjunto, generarCuerpoCorreo } from "@/services/reporte";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Location from "expo-location";
+import * as MailComposer from "expo-mail-composer";
 import React, {
   createContext,
   useCallback,
@@ -112,6 +114,7 @@ interface ClientesContextType {
     lng: number,
   ) => Promise<void>;
   borrarTodosLosClientes: () => void;
+  enviarReporteDelDia: (correoDestino?: string) => Promise<void>;
 
   // Estado y acciones de la Ruta Diaria
   ruta: ClienteConDistancia[];
@@ -824,6 +827,48 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     setRuta((prev) => prev.filter((c) => c.id !== cliente.id));
   };
 
+  const enviarReporteDelDia = async (correoDestino?: string): Promise<void> => {
+    const disponible = await MailComposer.isAvailableAsync();
+
+    if (!disponible) {
+      Alert.alert(
+        "Sin app de correo",
+        "No se encontró una app de correo configurada en este teléfono.",
+      );
+      return;
+    }
+
+    const idsVisitadosHoy = new Set(visitadosHoy.map((v) => v.clienteId));
+    const pendientesHoy = clientes.filter(
+      (c) =>
+        (c.geoStatus === "ok" || c.geoStatus === "aproximado") &&
+        !idsVisitadosHoy.has(c.id),
+    );
+
+    const cuerpo = generarCuerpoCorreo(
+      visitadosHoy,
+      pendientesHoy,
+      kmRecorridosReales,
+    );
+
+    let adjuntos: string[] = [];
+    try {
+      if (visitadosHoy.length > 0) {
+        const rutaArchivo = await generarArchivoAdjunto(visitadosHoy);
+        adjuntos = [rutaArchivo];
+      }
+    } catch (e) {
+      console.error("No se pudo generar el archivo adjunto", e);
+    }
+
+    await MailComposer.composeAsync({
+      recipients: correoDestino ? [correoDestino] : [],
+      subject: `Reporte de ruta — ${new Date().toLocaleDateString("es-CL")}`,
+      body: cuerpo,
+      attachments: adjuntos,
+    });
+  };
+
   const deshacerVisita = async (clienteId: string): Promise<void> => {
     const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
     const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
@@ -885,6 +930,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         calcularRuta,
         marcarVisitado,
         deshacerVisita,
+        enviarReporteDelDia,
 
         // Tracking GPS en Vivo (Recorrido Real)
         trayectoriaReal,

@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Ruta DyS necesita tu ubicación para registrar tu recorrido y priorizar tus clientes.",
-        "LSApplicationQueriesSchemes": ["waze", "comgooglemaps"]
+        "LSApplicationQueriesSchemes": [
+          "waze",
+          "comgooglemaps"
+        ]
       }
     },
     "android": {
@@ -58,7 +61,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-mail-composer"
     ],
     "experiments": {
       "typedRoutes": true,

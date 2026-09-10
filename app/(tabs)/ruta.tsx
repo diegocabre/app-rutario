@@ -14,8 +14,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useClientes } from "@/context/ClientesContext";
-import { ClienteConDistancia } from "@/types/cliente";
 import { obtenerEstadoPrioridad } from "@/services/prioridad";
+import { ClienteConDistancia } from "@/types/cliente";
 
 export default function RutaDelDia() {
   const router = useRouter();
@@ -29,6 +29,7 @@ export default function RutaDelDia() {
     marcarVisitado,
     deshacerVisita,
     setModoMapa,
+    enviarReporteDelDia,
   } = useClientes();
 
   useFocusEffect(
@@ -40,6 +41,20 @@ export default function RutaDelDia() {
   const irAlMapa = () => {
     setModoMapa("recorrido");
     router.push("/(tabs)/explore");
+  };
+  const handleEnviarReporte = async (): Promise<void> => {
+    if (visitadosHoy.length === 0) {
+      Alert.alert(
+        "Sin visitas registradas",
+        "Aún no has marcado ninguna visita hoy. ¿Quieres enviar el reporte de todas formas?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Enviar igual", onPress: () => enviarReporteDelDia() },
+        ],
+      );
+      return;
+    }
+    await enviarReporteDelDia();
   };
 
   const abrirWaze = async (cliente: ClienteConDistancia): Promise<void> => {
@@ -108,9 +123,19 @@ export default function RutaDelDia() {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.botonVerMapa} onPress={irAlMapa}>
-          <Text style={styles.botonVerMapaTexto}>🗺️ Ver mi Ruta</Text>
-        </TouchableOpacity>
+        <View style={styles.columnaBotones}>
+          <TouchableOpacity style={styles.botonVerMapa} onPress={irAlMapa}>
+            <Text style={styles.botonVerMapaTexto}>🗺️ Ver mi Ruta</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.botonEnviarReporte}
+            onPress={handleEnviarReporte}
+          >
+            <Text style={styles.botonEnviarReporteTexto}>
+              📧 Enviar reporte
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Lista de Paradas Ordenadas */}
@@ -169,24 +194,24 @@ export default function RutaDelDia() {
                   +{item.distanciaKm.toFixed(1)} km desde parada anterior
                 </Text>
               </View>
-            <View style={styles.botonesAccion}>
-              <TouchableOpacity
-                style={styles.botonNav}
-                onPress={() => elegirNavegacion(item)}
-              >
-                <Text style={styles.botonNavTexto}>🧭 Ir</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.botonVisitado}
-                onPress={() => marcarVisitado(item)}
-              >
-                <Text style={styles.botonVisitadoTexto}>✓ Visité</Text>
-              </TouchableOpacity>
+              <View style={styles.botonesAccion}>
+                <TouchableOpacity
+                  style={styles.botonNav}
+                  onPress={() => elegirNavegacion(item)}
+                >
+                  <Text style={styles.botonNavTexto}>🧭 Ir</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.botonVisitado}
+                  onPress={() => marcarVisitado(item)}
+                >
+                  <Text style={styles.botonVisitadoTexto}>✓ Visité</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        );
-      }}
-    />
+          );
+        }}
+      />
 
       {/* Sección de Clientes Visitados Hoy */}
       {visitadosHoy.length > 0 && (
@@ -298,7 +323,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   direccionCliente: { fontSize: 14, color: "#666", marginTop: 2 },
-  distancia: { fontSize: 12, color: "#2563eb", marginTop: 2, fontWeight: "500" },
+  distancia: {
+    fontSize: 12,
+    color: "#2563eb",
+    marginTop: 2,
+    fontWeight: "500",
+  },
   botonesAccion: { gap: 6 },
   botonNav: {
     backgroundColor: "#16a34a",
@@ -353,5 +383,20 @@ const styles = StyleSheet.create({
   badgePrioridadTexto: {
     fontSize: 10,
     fontWeight: "700",
+  },
+  columnaBotones: { gap: 8 },
+  botonEnviarReporte: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
+  },
+  botonEnviarReporteTexto: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 12,
+    textAlign: "center",
   },
 });
