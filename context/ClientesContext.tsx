@@ -1,3 +1,7 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Location from "expo-location";
 import React, {
   createContext,
   useCallback,
@@ -7,21 +11,17 @@ import React, {
   useState,
 } from "react";
 import { Alert } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import * as Location from "expo-location";
 
+import { parsearCSV } from "@/services/csv";
+import { geocodificarDireccion } from "@/services/geocoding";
+import { obtenerRutaVialEntrePuntos } from "@/services/routing";
+import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
 import {
   Cliente,
   ClienteConDistancia,
   PuntoGPS,
   RegistroVisita,
 } from "@/types/cliente";
-import { parsearCSV } from "@/services/csv";
-import { geocodificarDireccion } from "@/services/geocoding";
-import { obtenerRutaVialEntrePuntos } from "@/services/routing";
-import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
 
 const STORAGE_KEY = "clientes";
 const STORAGE_KEY_VISITAS = "visitas";
@@ -313,10 +313,10 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
             );
 
             // Filtro antideriva: si se movió menos de 10 metros, ignorar (vendedor detenido)
-            if (distDirectaKm < 0.010) return;
+            if (distDirectaKm < 0.01) return;
 
             // Desplazamiento normal por la vía (entre 10m y 70m)
-            if (distDirectaKm < 0.070) {
+            if (distDirectaKm < 0.07) {
               const actualizada = [...listaActual, nuevoPunto];
               const nuevoKm = kmRecorridosRealesRef.current + distDirectaKm;
               trayectoriaRealRef.current = actualizada;
@@ -641,22 +641,32 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     );
     await guardarClientes(listaPendiente);
 
-    const clienteActualizado = listaPendiente.find((c) => c.id === clienteId)!;
-    const resultado = await geocodificarDireccion(clienteActualizado.direccion);
-    const tieneCoords =
-      resultado.status === "ok" || resultado.status === "aproximado";
+    try {
+      const clienteActualizado = listaPendiente.find(
+        (c) => c.id === clienteId,
+      )!;
+      const resultado = await geocodificarDireccion(
+        clienteActualizado.direccion,
+      );
+      const tieneCoords =
+        resultado.status === "ok" || resultado.status === "aproximado";
 
-    const listaFinal = listaPendiente.map((c) =>
-      c.id === clienteId
-        ? {
-            ...c,
-            lat: tieneCoords ? resultado.coords.lat : undefined,
-            lng: tieneCoords ? resultado.coords.lng : undefined,
-            geoStatus: resultado.status,
-          }
-        : c,
-    );
-    await guardarClientes(listaFinal);
+      const listaFinal = listaPendiente.map((c) =>
+        c.id === clienteId
+          ? {
+              ...c,
+              lat: tieneCoords ? resultado.coords.lat : undefined,
+              lng: tieneCoords ? resultado.coords.lng : undefined,
+              geoStatus: resultado.status,
+            }
+          : c,
+      );
+      await guardarClientes(listaFinal);
+    } catch (e) {
+      console.error("Error re-geocodificando dirección corregida", e);
+      // La dirección ya quedó guardada arriba; solo falló volver a ubicarla.
+      // El cliente queda en geoStatus "pendiente" — se puede reintentar o ubicar manualmente.
+    }
   };
 
   const guardarCorreccionRut = (
@@ -828,12 +838,16 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
 
     // Buscar fecha de visita previa si existía en otros días
     const visitasPrevias = Object.entries(todasLasVisitas)
-      .filter(([fecha, list]) => fecha !== hoy && list.some((v) => v.clienteId === clienteId))
+      .filter(
+        ([fecha, list]) =>
+          fecha !== hoy && list.some((v) => v.clienteId === clienteId),
+      )
       .map(([fecha]) => fecha)
       .sort()
       .reverse();
 
-    const ultimaFecha = visitasPrevias.length > 0 ? visitasPrevias[0] : undefined;
+    const ultimaFecha =
+      visitasPrevias.length > 0 ? visitasPrevias[0] : undefined;
     const clientesActualizados = clientes.map((c) =>
       c.id === clienteId ? { ...c, ultimaVisita: ultimaFecha } : c,
     );

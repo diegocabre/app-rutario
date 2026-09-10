@@ -1,5 +1,5 @@
-import { formatoRutValido } from "@/services/rut";
 import { obtenerEstadoPrioridad } from "@/services/prioridad";
+import { formatoRutValido } from "@/services/rut";
 import { Cliente } from "@/types/cliente";
 import { useState } from "react";
 import {
@@ -13,7 +13,7 @@ import {
 interface Props {
   cliente: Cliente;
   conectado: boolean;
-  onGuardarDireccion: (id: string, nuevaDireccion: string) => void;
+  onGuardarDireccion: (id: string, nuevaDireccion: string) => Promise<void>;
   onGuardarRut: (id: string, nuevoRut: string) => boolean;
   onReintentar: (id: string) => void;
   onEliminar: (id: string) => void;
@@ -32,8 +32,12 @@ export default function ClienteTarjeta({
   const [editandoRut, setEditandoRut] = useState(false);
   const [rutEditado, setRutEditado] = useState(cliente.rut);
 
-  const guardarDireccion = () => {
-    onGuardarDireccion(cliente.id, direccionEditada);
+  const [guardandoDireccion, setGuardandoDireccion] = useState(false);
+
+  const guardarDireccion = async () => {
+    setGuardandoDireccion(true);
+    await onGuardarDireccion(cliente.id, direccionEditada);
+    setGuardandoDireccion(false);
     setEditandoDireccion(false);
   };
 
@@ -59,8 +63,11 @@ export default function ClienteTarjeta({
             <TouchableOpacity
               style={styles.botonGuardar}
               onPress={guardarDireccion}
+              disabled={guardandoDireccion}
             >
-              <Text style={styles.botonGuardarTexto}>Guardar</Text>
+              <Text style={styles.botonGuardarTexto}>
+                {guardandoDireccion ? "Guardando..." : "Guardar"}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
