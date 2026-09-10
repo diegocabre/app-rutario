@@ -560,40 +560,44 @@ export default function MapaClientes() {
       )}
 
       {/* Lista inferior para ubicar clientes pendientes */}
-      {!clienteAjustando && clientesSinUbicar.length > 0 && (
-        <View style={styles.listaPorCorregir}>
-          <Text style={styles.tituloLista}>
-            Sin ubicar todavía ({clientesSinUbicar.length})
-          </Text>
-          {clientesSinUbicar.slice(0, 3).map((cliente) => (
-            <TouchableOpacity
-              key={cliente.id}
-              style={styles.filaPorCorregir}
-              onPress={() => iniciarAjuste(cliente)}
-            >
-              <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
-              <Text style={styles.tocarTexto}>Ubicar →</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-      {!clienteAjustando && clientesAproximados.length > 0 && (
-        <View style={styles.listaPorCorregir}>
-          <Text style={styles.tituloLista}>
-            🟠 Ubicación aproximada, revisar ({clientesAproximados.length})
-          </Text>
-          {clientesAproximados.slice(0, 3).map((cliente) => (
-            <TouchableOpacity
-              key={cliente.id}
-              style={styles.filaPorCorregir}
-              onPress={() => iniciarAjuste(cliente)}
-            >
-              <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
-              <Text style={styles.tocarTexto}>Ajustar →</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      {!clienteAjustando &&
+        !clienteSeleccionado &&
+        clientesSinUbicar.length > 0 && (
+          <View style={styles.listaPorCorregir}>
+            <Text style={styles.tituloLista}>
+              Sin ubicar todavía ({clientesSinUbicar.length})
+            </Text>
+            {clientesSinUbicar.slice(0, 3).map((cliente) => (
+              <TouchableOpacity
+                key={cliente.id}
+                style={styles.filaPorCorregir}
+                onPress={() => iniciarAjuste(cliente)}
+              >
+                <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
+                <Text style={styles.tocarTexto}>Ubicar →</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      {!clienteAjustando &&
+        !clienteSeleccionado &&
+        clientesAproximados.length > 0 && (
+          <View style={styles.listaPorCorregir}>
+            <Text style={styles.tituloLista}>
+              🟠 Ubicación aproximada, revisar ({clientesAproximados.length})
+            </Text>
+            {clientesAproximados.slice(0, 3).map((cliente) => (
+              <TouchableOpacity
+                key={cliente.id}
+                style={styles.filaPorCorregir}
+                onPress={() => iniciarAjuste(cliente)}
+              >
+                <Text style={styles.nombrePorCorregir}>{cliente.nombre}</Text>
+                <Text style={styles.tocarTexto}>Ajustar →</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
     </SafeAreaView>
   );
 }
@@ -812,7 +816,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.18,
     shadowRadius: 10,
-    elevation: 6,
+    elevation: 20,
+    zIndex: 20,
     borderWidth: 1,
     borderColor: "#e5e7eb",
   },
