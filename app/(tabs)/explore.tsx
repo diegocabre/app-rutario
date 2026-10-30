@@ -1,6 +1,7 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useKeepAwake } from "expo-keep-awake";
-import { useCallback, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -104,6 +105,7 @@ export default function MapaClientes() {
 
   const clientesSinUbicar = clientes.filter(
     (c) =>
+      c.geoStatus === "manual" ||
       c.geoStatus === "error" ||
       c.geoStatus === "no_encontrado" ||
       c.geoStatus === "sin_conexion",
@@ -112,17 +114,42 @@ export default function MapaClientes() {
     (c) => c.geoStatus === "aproximado",
   );
 
+  const mapRef = useRef<MapView>(null);
+  const router = useRouter();
+  const { ubicar } = useLocalSearchParams<{ ubicar?: string }>();
+
+  const moverPin = (punto: { latitude: number; longitude: number }) => {
+    setPinTemporal(punto);
+    mapRef.current?.animateToRegion({
+      ...punto,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    });
+  };
+
+  // Sin coordenadas, el pin parte en tu posición: lo normal es estar frente al cliente
   const iniciarAjuste = (cliente: Cliente): void => {
     setClienteAjustando(cliente);
-    setPinTemporal(
+    moverPin(
       cliente.lat && cliente.lng
         ? { latitude: cliente.lat, longitude: cliente.lng }
-        : {
+        : (posicionVendedor ?? {
             latitude: REGION_DEFECTO.latitude,
             longitude: REGION_DEFECTO.longitude,
-          },
+          }),
     );
   };
+
+  // Llegada desde «Ubicar en mapa» en la lista de clientes
+  useEffect(() => {
+    if (!ubicar) return;
+    const cliente = clientes.find((c) => c.id === ubicar);
+    if (!cliente) return;
+    setClienteSeleccionado(null);
+    iniciarAjuste(cliente);
+    router.setParams({ ubicar: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo reacciona al parámetro
+  }, [ubicar, clientes]);
 
   const tocarMapa = (evento: MapPressEvent): void => {
     if (clienteAjustando) {
@@ -139,14 +166,18 @@ export default function MapaClientes() {
   const guardarAjuste = async (): Promise<void> => {
     if (!clienteAjustando || !pinTemporal) return;
 
-    await actualizarUbicacionManual(
+    const direccion = await actualizarUbicacionManual(
       clienteAjustando.id,
       pinTemporal.latitude,
       pinTemporal.longitude,
     );
     setClienteAjustando(null);
     setPinTemporal(null);
-    Alert.alert("Listo", `Ubicación de ${clienteAjustando.nombre} guardada`);
+    Alert.alert(
+      "Listo",
+      `Ubicación de ${clienteAjustando.nombre} guardada` +
+        (direccion ? `\n${direccion}` : ""),
+    );
   };
 
   const cancelarAjuste = (): void => {
@@ -316,6 +347,11 @@ export default function MapaClientes() {
             {clienteAjustando.nombre}
           </Text>
           <View style={styles.bannerBotones}>
+            {posicionVendedor && (
+              <TouchableOpacity onPress={() => moverPin(posicionVendedor)}>
+                <Text style={styles.bannerMiUbicacion}>📍 Mi ubicación</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={cancelarAjuste}>
               <Text style={styles.bannerCancelar}>Cancelar</Text>
             </TouchableOpacity>
@@ -330,6 +366,7 @@ export default function MapaClientes() {
       )}
 
       <MapView
+        ref={mapRef}
         style={styles.mapa}
         initialRegion={initialRegion}
         onPress={tocarMapa}
@@ -689,6 +726,7 @@ const styles = StyleSheet.create({
   bannerAjusteTexto: { flex: 1, fontSize: 13, color: "#1e40af" },
   bannerBotones: { flexDirection: "row", gap: 12, alignItems: "center" },
   bannerCancelar: { color: "#6b7280", fontSize: 13 },
+  bannerMiUbicacion: { color: "#1d4ed8", fontSize: 13, fontWeight: "600" },
   bannerGuardarBoton: {
     backgroundColor: "#2563eb",
     paddingHorizontal: 12,

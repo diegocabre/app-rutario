@@ -1,8 +1,11 @@
 import ClienteTarjeta from "@/components/ClienteTarjeta";
 import { useClientes } from "@/context/ClientesContext";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { Cliente } from "@/types/cliente";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -28,11 +31,38 @@ export default function ListaClientes() {
     reintentarGeocodificacion,
     guardarCorreccionDireccion,
     guardarCorreccionRut,
+    ubicarEnPosicionActual,
   } = useClientes();
+  const router = useRouter();
 
   const [rut, setRut] = useState("");
   const [nombre, setNombre] = useState("");
   const [direccion, setDireccion] = useState("");
+  const [busqueda, setBusqueda] = useState("");
+
+  const texto = busqueda.trim().toUpperCase();
+  const clientesFiltrados = texto
+    ? clientes.filter(
+        (c) =>
+          c.nombre.toUpperCase().includes(texto) ||
+          c.rut.toUpperCase().includes(texto) ||
+          c.direccion.toUpperCase().includes(texto),
+      )
+    : clientes;
+
+  const ubicarAqui = (cliente: Cliente) => {
+    Alert.alert(
+      "¿Estás en este cliente?",
+      `Se guardará tu ubicación actual como la de ${cliente.nombre} y se actualizará su dirección.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Guardar", onPress: () => ubicarEnPosicionActual(cliente) },
+      ],
+    );
+  };
+
+  const ubicarEnMapa = (id: string) =>
+    router.navigate({ pathname: "/(tabs)/explore", params: { ubicar: id } });
 
   const handleAgregar = async () => {
     if (!(await agregarCliente(nombre, rut, direccion))) return;
@@ -107,13 +137,27 @@ export default function ListaClientes() {
           </TouchableOpacity>
         </View>
 
+        {clientes.length > 0 && (
+          <TextInput
+            style={styles.input}
+            placeholder={`🔍 Buscar entre ${clientes.length} clientes (nombre, RUT o dirección)`}
+            value={busqueda}
+            onChangeText={setBusqueda}
+            clearButtonMode="while-editing"
+          />
+        )}
+
         <FlatList
-          data={clientes}
+          data={clientesFiltrados}
           keyExtractor={(item) => item.id}
           style={styles.lista}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <Text style={styles.vacio}>Aún no tienes clientes agregados</Text>
+            <Text style={styles.vacio}>
+              {texto
+                ? "Ningún cliente coincide con la búsqueda"
+                : "Aún no tienes clientes agregados"}
+            </Text>
           }
           renderItem={({ item }) => (
             <ClienteTarjeta
@@ -123,6 +167,8 @@ export default function ListaClientes() {
               onGuardarRut={guardarCorreccionRut}
               onReintentar={reintentarGeocodificacion}
               onEliminar={eliminarCliente}
+              onUbicarAqui={ubicarAqui}
+              onUbicarEnMapa={ubicarEnMapa}
             />
           )}
         />

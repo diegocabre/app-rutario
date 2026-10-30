@@ -90,6 +90,22 @@ function ordenarPorVecinoMasCercano(
   return ordenados;
 }
 
+async function direccionDesdeCoords(
+  latitude: number,
+  longitude: number,
+): Promise<string | null> {
+  try {
+    const [d] = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (!d) return null;
+    const calle = [d.street ?? d.name, d.streetNumber].filter(Boolean).join(" ");
+    const texto = [calle, d.city ?? d.subregion].filter(Boolean).join(", ");
+    return texto || d.formattedAddress || null;
+  } catch (e) {
+    console.warn("No se pudo obtener la dirección del punto", e);
+    return null;
+  }
+}
+
 interface ClientesContextType {
   clientes: Cliente[];
   importando: boolean;
@@ -112,7 +128,8 @@ interface ClientesContextType {
     clienteId: string,
     lat: number,
     lng: number,
-  ) => Promise<void>;
+  ) => Promise<string | null>;
+  ubicarEnPosicionActual: (cliente: Cliente) => Promise<void>;
   borrarTodosLosClientes: () => void;
   enviarReporteDelDia: (correoDestino?: string) => Promise<void>;
 
@@ -509,32 +526,38 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const buscarPorDireccion = await new Promise<boolean>((resolve) =>
+        Alert.alert(
+          "¿Cómo ubicar estos clientes?",
+          "Si las direcciones del archivo no son confiables, impórtalos sin ubicar y regístralos en terreno con «Estoy aquí» o desde el Mapa.",
+          [
+            { text: "Los ubico yo", onPress: () => resolve(false) },
+            { text: "Buscar por dirección", onPress: () => resolve(true) },
+          ],
+          { cancelable: false },
+        ),
+      );
+
       setImportando(true);
       setProgresoImport({ actual: 0, total: filas.length });
 
-      const rutsExistentes = new Set(
-        clientesRef.current.map((c) => limpiarRut(c.rut)),
+      // RUT + nombre: plantas distintas de una misma empresa comparten RUT
+      const clave = (rut: string, nombre: string) =>
+        `${limpiarRut(rut)}|${nombre.trim().toUpperCase()}`;
+      const clavesExistentes = new Set(
+        clientesRef.current.map((c) => clave(c.rut, c.nombre)),
       );
-      const rutsEnEsteArchivo = new Set<string>();
       let duplicadosOmitidos = 0;
-      let invalidosOmitidos = 0;
 
       const nuevosClientes: Cliente[] = [];
 
       for (const fila of filas) {
-        if (!fila.rut || !fila.rut.trim()) {
-          invalidosOmitidos++;
-          continue;
-        }
-
-        const rutLimpio = limpiarRut(fila.rut);
-
-        if (rutsExistentes.has(rutLimpio) || rutsEnEsteArchivo.has(rutLimpio)) {
+        const claveFila = clave(fila.rut, fila.nombre);
+        if (clavesExistentes.has(claveFila)) {
           duplicadosOmitidos++;
           continue;
         }
-
-        rutsEnEsteArchivo.add(rutLimpio);
+        clavesExistentes.add(claveFila);
 
         nuevosClientes.push({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -543,7 +566,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
             ? formatearRut(fila.rut)
             : fila.rut.trim(),
           direccion: fila.direccion,
-          geoStatus: "pendiente",
+          geoStatus: buscarPorDireccion ? "pendiente" : "manual",
           ultimaVisita: fila.ultimaVisita,
         });
       }
@@ -552,12 +575,25 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         setImportando(false);
         Alert.alert(
           "Nada que importar",
-          `Todos los registros ya existían o tenían RUT inválido (${duplicadosOmitidos} duplicados, ${invalidosOmitidos} inválidos)`,
+          `Los ${duplicadosOmitidos} clientes del archivo ya existían`,
         );
         return;
       }
 
       await guardarClientes((lista) => [...lista, ...nuevosClientes]);
+
+      if (!buscarPorDireccion) {
+        setImportando(false);
+        Alert.alert(
+          "Importación completa",
+          `✅ ${nuevosClientes.length} clientes importados sin ubicar.\n` +
+            "Ubícalos con «Estoy aquí» cuando los visites, o desde el Mapa." +
+            (duplicadosOmitidos > 0
+              ? `\nℹ️ ${duplicadosOmitidos} duplicados omitidos.`
+              : ""),
+        );
+        return;
+      }
 
       let sinUbicar = 0;
       for (let i = 0; i < nuevosClientes.length; i++) {
@@ -601,12 +637,49 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     clienteId: string,
     lat: number,
     lng: number,
-  ): Promise<void> => {
+  ): Promise<string | null> => {
     await guardarClientes((lista) =>
       lista.map((c) =>
         c.id === clienteId ? { ...c, lat, lng, geoStatus: "ok" as const } : c,
       ),
     );
+
+    // La dirección del archivo no es confiable: se reemplaza por la del punto ubicado
+    const direccion = await direccionDesdeCoords(lat, lng);
+    if (direccion) {
+      await guardarClientes((lista) =>
+        lista.map((c) => (c.id === clienteId ? { ...c, direccion } : c)),
+      );
+    }
+    return direccion;
+  };
+
+  const ubicarEnPosicionActual = async (cliente: Cliente): Promise<void> => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Sin permiso", "Activa el permiso de ubicación para usar «Estoy aquí».");
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const direccion = await actualizarUbicacionManual(
+        cliente.id,
+        pos.coords.latitude,
+        pos.coords.longitude,
+      );
+      const precision = pos.coords.accuracy
+        ? ` (±${Math.round(pos.coords.accuracy)} m)`
+        : "";
+      Alert.alert(
+        "Ubicación guardada",
+        `${cliente.nombre}${precision}` + (direccion ? `\n${direccion}` : ""),
+      );
+    } catch (e) {
+      console.error("Error obteniendo la posición actual", e);
+      Alert.alert("Sin GPS", "No se pudo obtener tu ubicación, inténtalo de nuevo.");
+    }
   };
 
   const reintentarGeocodificacion = async (
@@ -630,6 +703,35 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     nuevaDireccion: string,
   ): Promise<void> => {
     if (!nuevaDireccion.trim()) return;
+
+    // Si ya tiene pin (p. ej. tomado con GPS en terreno), no moverlo sin preguntar
+    const cliente = clientesRef.current.find((c) => c.id === clienteId);
+    const yaUbicado =
+      (cliente?.geoStatus === "ok" || cliente?.geoStatus === "aproximado") &&
+      cliente.lat != null &&
+      cliente.lng != null;
+    const moverPin =
+      !yaUbicado ||
+      (await new Promise<boolean>((resolve) =>
+        Alert.alert(
+          "¿Mover el pin?",
+          "Este cliente ya está ubicado en el mapa. ¿Buscar la nueva dirección y mover el pin, o solo cambiar el texto?",
+          [
+            { text: "Solo el texto", onPress: () => resolve(false) },
+            { text: "Mover el pin", onPress: () => resolve(true) },
+          ],
+          { cancelable: false },
+        ),
+      ));
+
+    if (!moverPin) {
+      await guardarClientes((lista) =>
+        lista.map((c) =>
+          c.id === clienteId ? { ...c, direccion: nuevaDireccion.trim() } : c,
+        ),
+      );
+      return;
+    }
 
     await guardarClientes((lista) =>
       lista.map((c) =>
@@ -908,6 +1010,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         guardarCorreccionDireccion,
         guardarCorreccionRut,
         actualizarUbicacionManual,
+        ubicarEnPosicionActual,
         borrarTodosLosClientes,
 
         // Ruta Planificada

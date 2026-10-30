@@ -17,6 +17,8 @@ interface Props {
   onGuardarRut: (id: string, nuevoRut: string) => boolean;
   onReintentar: (id: string) => void;
   onEliminar: (id: string) => void;
+  onUbicarAqui: (cliente: Cliente) => void;
+  onUbicarEnMapa: (id: string) => void;
 }
 
 export default function ClienteTarjeta({
@@ -26,6 +28,8 @@ export default function ClienteTarjeta({
   onGuardarRut,
   onReintentar,
   onEliminar,
+  onUbicarAqui,
+  onUbicarEnMapa,
 }: Props) {
   const [editandoDireccion, setEditandoDireccion] = useState(false);
   const [direccionEditada, setDireccionEditada] = useState(cliente.direccion);
@@ -36,9 +40,18 @@ export default function ClienteTarjeta({
 
   const guardarDireccion = async () => {
     setGuardandoDireccion(true);
-    await onGuardarDireccion(cliente.id, direccionEditada);
-    setGuardandoDireccion(false);
-    setEditandoDireccion(false);
+    try {
+      await onGuardarDireccion(cliente.id, direccionEditada);
+      setEditandoDireccion(false);
+    } finally {
+      setGuardandoDireccion(false);
+    }
+  };
+
+  // La dirección puede haber cambiado (p. ej. al ubicar con GPS) desde que se montó la tarjeta
+  const abrirEdicionDireccion = () => {
+    setDireccionEditada(cliente.direccion);
+    setEditandoDireccion(true);
   };
 
   const guardarRut = () => {
@@ -68,6 +81,12 @@ export default function ClienteTarjeta({
               <Text style={styles.botonGuardarTexto}>
                 {guardandoDireccion ? "Guardando..." : "Guardar"}
               </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setEditandoDireccion(false)}
+              disabled={guardandoDireccion}
+            >
+              <Text style={styles.cancelarTexto}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -123,12 +142,16 @@ export default function ClienteTarjeta({
         ) : (
           <>
             <Text style={styles.rutCliente}>
-              {cliente.rut}
-              {!formatoRutValido(cliente.rut) && "  ⚠️ formato inválido"}
+              {cliente.rut || "Sin RUT"}
+              {cliente.rut !== "" &&
+                !formatoRutValido(cliente.rut) &&
+                "  ⚠️ formato inválido"}
             </Text>
             {!formatoRutValido(cliente.rut) && (
               <TouchableOpacity onPress={() => setEditandoRut(true)}>
-                <Text style={styles.editarTexto}>✏️ Corregir RUT</Text>
+                <Text style={styles.editarTexto}>
+                  {cliente.rut ? "✏️ Corregir RUT" : "✏️ Agregar RUT"}
+                </Text>
               </TouchableOpacity>
             )}
           </>
@@ -145,7 +168,24 @@ export default function ClienteTarjeta({
             "⚠️ No se encontró, corrige la dirección o ubica en el Mapa"}
           {cliente.geoStatus === "sin_conexion" &&
             "📡 Sin conexión, reintenta cuando tengas señal"}
+          {cliente.geoStatus === "manual" &&
+            "📍 Sin ubicar: usa «Estoy aquí» al visitarlo o ubícalo en el mapa"}
         </Text>
+
+        <View style={styles.accionesUbicar}>
+          <TouchableOpacity
+            style={styles.botonUbicar}
+            onPress={() => onUbicarAqui(cliente)}
+          >
+            <Text style={styles.botonUbicarTexto}>📍 Estoy aquí</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.botonUbicar}
+            onPress={() => onUbicarEnMapa(cliente.id)}
+          >
+            <Text style={styles.botonUbicarTexto}>🗺️ Ubicar en mapa</Text>
+          </TouchableOpacity>
+        </View>
 
         {cliente.geoStatus === "sin_conexion" && conectado && (
           <TouchableOpacity onPress={() => onReintentar(cliente.id)}>
@@ -153,12 +193,9 @@ export default function ClienteTarjeta({
           </TouchableOpacity>
         )}
 
-        {(cliente.geoStatus === "error" ||
-          cliente.geoStatus === "no_encontrado") && (
-          <TouchableOpacity onPress={() => setEditandoDireccion(true)}>
-            <Text style={styles.editarTexto}>✏️ Editar dirección</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={abrirEdicionDireccion}>
+          <Text style={styles.editarTexto}>✏️ Editar dirección</Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity onPress={() => onEliminar(cliente.id)}>
@@ -199,6 +236,22 @@ const styles = StyleSheet.create({
   },
   botonGuardarTexto: { color: "#fff", fontWeight: "600", fontSize: 13 },
   editarTexto: { color: "#2563eb", fontSize: 13, marginTop: 4 },
+  cancelarTexto: {
+    color: "#6b7280",
+    fontSize: 13,
+    textAlign: "center",
+    paddingVertical: 8,
+  },
+  accionesUbicar: { flexDirection: "row", gap: 8, marginTop: 8 },
+  botonUbicar: {
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  botonUbicarTexto: { color: "#1d4ed8", fontSize: 13, fontWeight: "600" },
   badgePrioridad: {
     paddingHorizontal: 7,
     paddingVertical: 2,

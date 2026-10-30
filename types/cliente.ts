@@ -13,7 +13,8 @@ export interface Cliente {
     | "aproximado"
     | "error"
     | "sin_conexion"
-    | "no_encontrado";
+    | "no_encontrado"
+    | "manual"; // importado sin geocodificar: se ubica en terreno
   ultimaVisita?: string; // Fecha ISO o YYYY-MM-DD
 }
 

@@ -41,3 +41,6 @@ app-example
 # generated native folders
 /ios
 /android
+
+# datos de clientes (no subir)
+clientes_customer.csv

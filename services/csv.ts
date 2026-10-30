@@ -68,8 +68,9 @@ export function parsearCSV(contenido: string): FilaCSV[] {
         ? valores[indiceUltimaVisita]?.trim() || undefined
         : undefined;
 
-    if (nombre && rut && direccion) {
-      filas.push({ nombre, rut, direccion, ultimaVisita });
+    // RUT y dirección pueden faltar: el cliente se completa y ubica después en terreno
+    if (nombre) {
+      filas.push({ nombre, rut: rut ?? "", direccion: direccion ?? "", ultimaVisita });
     }
   }
 
