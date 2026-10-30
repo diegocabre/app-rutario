@@ -15,7 +15,11 @@ import React, {
 import { Alert } from "react-native";
 
 import { parsearCSV } from "@/services/csv";
-import { geocodificarDireccion } from "@/services/geocoding";
+import {
+  geocodificarDireccion,
+  ResultadoGeocodificacion,
+} from "@/services/geocoding";
+import { obtenerFechaHoy } from "@/services/prioridad";
 import { obtenerRutaVialEntrePuntos } from "@/services/routing";
 import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
 import {
@@ -31,10 +35,6 @@ const STORAGE_KEY_TRACKING_PREFIJO = "tracking_trayectoria_";
 const STORAGE_KEY_TRACKING_KM_PREFIJO = "tracking_km_";
 
 type VisitasPorFecha = Record<string, RegistroVisita[]>;
-
-function obtenerFechaHoy(): string {
-  return new Date().toISOString().split("T")[0];
-}
 
 function calcularDistanciaKm(
   lat1: number,
@@ -99,7 +99,7 @@ interface ClientesContextType {
     nombre: string,
     rut: string,
     direccion: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   importarCSV: () => Promise<void>;
   eliminarCliente: (id: string) => void;
   reintentarGeocodificacion: (clienteId: string) => Promise<void>;
@@ -144,6 +144,8 @@ const ClientesContext = createContext<ClientesContextType | null>(null);
 
 export function ClientesProvider({ children }: { children: React.ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  // Lista vigente para las funciones async: el `clientes` de su closure queda viejo mientras geocodifican
+  const clientesRef = useRef<Cliente[]>([]);
   const [importando, setImportando] = useState(false);
   const [progresoImport, setProgresoImport] = useState({ actual: 0, total: 0 });
   const [agregando, setAgregando] = useState(false);
@@ -180,19 +182,47 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   const cargarClientes = async (): Promise<void> => {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEY);
-      if (data) setClientes(JSON.parse(data) as Cliente[]);
+      if (data) {
+        clientesRef.current = JSON.parse(data) as Cliente[];
+        setClientes(clientesRef.current);
+      }
     } catch (e) {
       console.error("Error cargando clientes", e);
     }
   };
 
-  const guardarClientes = async (nuevaLista: Cliente[]): Promise<void> => {
+  // Recibe un updater sobre la lista vigente para no pisar cambios hechos durante un await
+  const guardarClientes = async (
+    actualizar: (lista: Cliente[]) => Cliente[],
+  ): Promise<void> => {
+    const nuevaLista = actualizar(clientesRef.current);
+    clientesRef.current = nuevaLista;
+    setClientes(nuevaLista);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nuevaLista));
-      setClientes(nuevaLista);
     } catch (e) {
       console.error("Error guardando clientes", e);
     }
+  };
+
+  const guardarResultadoGeo = (
+    clienteId: string,
+    resultado: ResultadoGeocodificacion,
+  ): Promise<void> => {
+    const tieneCoords =
+      resultado.status === "ok" || resultado.status === "aproximado";
+    return guardarClientes((lista) =>
+      lista.map((c) =>
+        c.id === clienteId
+          ? {
+              ...c,
+              lat: tieneCoords ? resultado.coords.lat : undefined,
+              lng: tieneCoords ? resultado.coords.lng : undefined,
+              geoStatus: resultado.status,
+            }
+          : c,
+      ),
+    );
   };
 
   // Cargar trayectoria guardada de hoy
@@ -415,10 +445,10 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     nombre: string,
     rut: string,
     direccion: string,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (!nombre.trim() || !direccion.trim() || !rut.trim()) {
       Alert.alert("Faltan datos", "Nombre, RUT y dirección son obligatorios");
-      return;
+      return false;
     }
 
     if (!formatoRutValido(rut)) {
@@ -426,18 +456,20 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         "RUT inválido",
         "Revisa el RUT ingresado, el formato no es válido",
       );
-      return;
+      return false;
     }
 
     const rutLimpio = limpiarRut(rut);
-    const yaExiste = clientes.find((c) => limpiarRut(c.rut) === rutLimpio);
+    const yaExiste = clientesRef.current.find(
+      (c) => limpiarRut(c.rut) === rutLimpio,
+    );
 
     if (yaExiste) {
       Alert.alert(
         "Cliente duplicado",
         `Ese RUT ya está registrado para "${yaExiste.nombre}"`,
       );
-      return;
+      return false;
     }
 
     setAgregando(true);
@@ -450,26 +482,14 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       geoStatus: "pendiente",
     };
 
-    const listaConNuevo = [...clientes, nuevoCliente];
-    await guardarClientes(listaConNuevo);
-
-    const resultado = await geocodificarDireccion(nuevoCliente.direccion);
-    const tieneCoords =
-      resultado.status === "ok" || resultado.status === "aproximado";
-
-    const listaActualizada = listaConNuevo.map((c) =>
-      c.id === nuevoCliente.id
-        ? {
-            ...c,
-            lat: tieneCoords ? resultado.coords.lat : undefined,
-            lng: tieneCoords ? resultado.coords.lng : undefined,
-            geoStatus: resultado.status,
-          }
-        : c,
-    );
-
-    await guardarClientes(listaActualizada);
-    setAgregando(false);
+    try {
+      await guardarClientes((lista) => [...lista, nuevoCliente]);
+      const resultado = await geocodificarDireccion(nuevoCliente.direccion);
+      await guardarResultadoGeo(nuevoCliente.id, resultado);
+    } finally {
+      setAgregando(false);
+    }
+    return true;
   };
 
   const importarCSV = async (): Promise<void> => {
@@ -492,7 +512,9 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       setImportando(true);
       setProgresoImport({ actual: 0, total: filas.length });
 
-      const rutsExistentes = new Set(clientes.map((c) => limpiarRut(c.rut)));
+      const rutsExistentes = new Set(
+        clientesRef.current.map((c) => limpiarRut(c.rut)),
+      );
       const rutsEnEsteArchivo = new Set<string>();
       let duplicadosOmitidos = 0;
       let invalidosOmitidos = 0;
@@ -535,26 +557,19 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      let listaActual = [...clientes, ...nuevosClientes];
-      await guardarClientes(listaActual);
+      await guardarClientes((lista) => [...lista, ...nuevosClientes]);
 
+      let sinUbicar = 0;
       for (let i = 0; i < nuevosClientes.length; i++) {
         const cliente = nuevosClientes[i];
         const resultadoGeo = await geocodificarDireccion(cliente.direccion);
-        const tieneCoords =
-          resultadoGeo.status === "ok" || resultadoGeo.status === "aproximado";
-
-        listaActual = listaActual.map((c) =>
-          c.id === cliente.id
-            ? {
-                ...c,
-                lat: tieneCoords ? resultadoGeo.coords.lat : undefined,
-                lng: tieneCoords ? resultadoGeo.coords.lng : undefined,
-                geoStatus: resultadoGeo.status,
-              }
-            : c,
-        );
-        await guardarClientes(listaActual);
+        if (
+          resultadoGeo.status !== "ok" &&
+          resultadoGeo.status !== "aproximado"
+        ) {
+          sinUbicar++;
+        }
+        await guardarResultadoGeo(cliente.id, resultadoGeo);
         setProgresoImport({ actual: i + 1, total: nuevosClientes.length });
 
         if (i < nuevosClientes.length - 1) {
@@ -562,20 +577,14 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const conError = listaActual.filter(
-        (c) =>
-          c.geoStatus === "error" ||
-          c.geoStatus === "sin_conexion" ||
-          c.geoStatus === "no_encontrado",
-      );
-      const ubicadosOk = nuevosClientes.length - conError.length;
+      const ubicadosOk = nuevosClientes.length - sinUbicar;
 
       setImportando(false);
       Alert.alert(
         "Importación completa",
         `✅ ${ubicadosOk} clientes ubicados.\n` +
-          (conError.length > 0
-            ? `⚠️ ${conError.length} requieren ajuste manual en el Mapa.\n`
+          (sinUbicar > 0
+            ? `⚠️ ${sinUbicar} requieren ajuste manual en el Mapa.\n`
             : "") +
           (duplicadosOmitidos > 0
             ? `ℹ️ ${duplicadosOmitidos} duplicados omitidos.`
@@ -593,38 +602,27 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     lat: number,
     lng: number,
   ): Promise<void> => {
-    const actualizados = clientes.map((c) =>
-      c.id === clienteId ? { ...c, lat, lng, geoStatus: "ok" as const } : c,
+    await guardarClientes((lista) =>
+      lista.map((c) =>
+        c.id === clienteId ? { ...c, lat, lng, geoStatus: "ok" as const } : c,
+      ),
     );
-    await guardarClientes(actualizados);
   };
 
   const reintentarGeocodificacion = async (
     clienteId: string,
   ): Promise<void> => {
-    const cliente = clientes.find((c) => c.id === clienteId);
+    const cliente = clientesRef.current.find((c) => c.id === clienteId);
     if (!cliente) return;
 
-    const listaPendiente = clientes.map((c) =>
-      c.id === clienteId ? { ...c, geoStatus: "pendiente" as const } : c,
+    await guardarClientes((lista) =>
+      lista.map((c) =>
+        c.id === clienteId ? { ...c, geoStatus: "pendiente" as const } : c,
+      ),
     );
-    await guardarClientes(listaPendiente);
 
     const resultado = await geocodificarDireccion(cliente.direccion);
-    const tieneCoords =
-      resultado.status === "ok" || resultado.status === "aproximado";
-
-    const listaFinal = listaPendiente.map((c) =>
-      c.id === clienteId
-        ? {
-            ...c,
-            lat: tieneCoords ? resultado.coords.lat : undefined,
-            lng: tieneCoords ? resultado.coords.lng : undefined,
-            geoStatus: resultado.status,
-          }
-        : c,
-    );
-    await guardarClientes(listaFinal);
+    await guardarResultadoGeo(clienteId, resultado);
   };
 
   const guardarCorreccionDireccion = async (
@@ -633,38 +631,21 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   ): Promise<void> => {
     if (!nuevaDireccion.trim()) return;
 
-    const listaPendiente = clientes.map((c) =>
-      c.id === clienteId
-        ? {
-            ...c,
-            direccion: nuevaDireccion.trim(),
-            geoStatus: "pendiente" as const,
-          }
-        : c,
-    );
-    await guardarClientes(listaPendiente);
-
-    try {
-      const clienteActualizado = listaPendiente.find(
-        (c) => c.id === clienteId,
-      )!;
-      const resultado = await geocodificarDireccion(
-        clienteActualizado.direccion,
-      );
-      const tieneCoords =
-        resultado.status === "ok" || resultado.status === "aproximado";
-
-      const listaFinal = listaPendiente.map((c) =>
+    await guardarClientes((lista) =>
+      lista.map((c) =>
         c.id === clienteId
           ? {
               ...c,
-              lat: tieneCoords ? resultado.coords.lat : undefined,
-              lng: tieneCoords ? resultado.coords.lng : undefined,
-              geoStatus: resultado.status,
+              direccion: nuevaDireccion.trim(),
+              geoStatus: "pendiente" as const,
             }
           : c,
-      );
-      await guardarClientes(listaFinal);
+      ),
+    );
+
+    try {
+      const resultado = await geocodificarDireccion(nuevaDireccion.trim());
+      await guardarResultadoGeo(clienteId, resultado);
     } catch (e) {
       console.error("Error re-geocodificando dirección corregida", e);
       // La dirección ya quedó guardada arriba; solo falló volver a ubicarla.
@@ -694,8 +675,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
-    guardarClientes(
-      clientes.map((c) =>
+    guardarClientes((lista) =>
+      lista.map((c) =>
         c.id === clienteId ? { ...c, rut: formatearRut(nuevoRut) } : c,
       ),
     );
@@ -712,7 +693,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         {
           text: "Eliminar",
           style: "destructive",
-          onPress: () => guardarClientes(clientes.filter((c) => c.id !== id)),
+          onPress: () =>
+            guardarClientes((lista) => lista.filter((c) => c.id !== id)),
         },
       ],
     );
@@ -726,7 +708,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         text: "Borrar todo",
         style: "destructive",
         onPress: () => {
-          guardarClientes([]);
+          guardarClientes(() => []);
           setRuta([]);
         },
       },
@@ -800,6 +782,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
     const hoy = obtenerFechaHoy();
     const visitasDeHoy = todasLasVisitas[hoy] ?? [];
+    if (visitasDeHoy.some((v) => v.clienteId === cliente.id)) return;
 
     const nuevaVisita: RegistroVisita = {
       clienteId: cliente.id,
@@ -808,6 +791,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         hour: "2-digit",
         minute: "2-digit",
       }),
+      ultimaVisitaAnterior: clientesRef.current.find((c) => c.id === cliente.id)
+        ?.ultimaVisita,
     };
 
     todasLasVisitas[hoy] = [...visitasDeHoy, nuevaVisita];
@@ -818,10 +803,11 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
 
     // Actualizar fecha de última visita del cliente a hoy
     const fechaActual = new Date().toISOString();
-    const clientesActualizados = clientes.map((c) =>
-      c.id === cliente.id ? { ...c, ultimaVisita: fechaActual } : c,
+    await guardarClientes((lista) =>
+      lista.map((c) =>
+        c.id === cliente.id ? { ...c, ultimaVisita: fechaActual } : c,
+      ),
     );
-    await guardarClientes(clientesActualizados);
 
     setVisitadosHoy(todasLasVisitas[hoy]);
     setRuta((prev) => prev.filter((c) => c.id !== cliente.id));
@@ -873,6 +859,9 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     const data = await AsyncStorage.getItem(STORAGE_KEY_VISITAS);
     const todasLasVisitas: VisitasPorFecha = data ? JSON.parse(data) : {};
     const hoy = obtenerFechaHoy();
+    const registro = (todasLasVisitas[hoy] ?? []).find(
+      (v) => v.clienteId === clienteId,
+    );
     todasLasVisitas[hoy] = (todasLasVisitas[hoy] ?? []).filter(
       (v) => v.clienteId !== clienteId,
     );
@@ -891,12 +880,13 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       .sort()
       .reverse();
 
-    const ultimaFecha =
-      visitasPrevias.length > 0 ? visitasPrevias[0] : undefined;
-    const clientesActualizados = clientes.map((c) =>
-      c.id === clienteId ? { ...c, ultimaVisita: ultimaFecha } : c,
+    // La fecha previa guardada al marcar incluye la del CSV; registros antiguos no la tienen
+    const ultimaFecha = registro?.ultimaVisitaAnterior ?? visitasPrevias[0];
+    await guardarClientes((lista) =>
+      lista.map((c) =>
+        c.id === clienteId ? { ...c, ultimaVisita: ultimaFecha } : c,
+      ),
     );
-    await guardarClientes(clientesActualizados);
 
     setVisitadosHoy(todasLasVisitas[hoy]);
     await calcularRuta();

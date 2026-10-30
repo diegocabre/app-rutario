@@ -1,3 +1,4 @@
+import { obtenerFechaHoy } from "@/services/prioridad";
 import { Cliente, RegistroVisita } from "@/types/cliente";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -53,8 +54,7 @@ export async function generarArchivoAdjunto(
   );
   const contenido = [encabezado, ...filas].join("\n");
 
-  const fecha = new Date().toISOString().split("T")[0];
-  const ruta = `${FileSystem.cacheDirectory}reporte_${fecha}.csv`;
+  const ruta = `${FileSystem.cacheDirectory}reporte_${obtenerFechaHoy()}.csv`;
 
   await FileSystem.writeAsStringAsync(ruta, contenido, {
     encoding: FileSystem.EncodingType.UTF8,

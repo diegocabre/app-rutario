@@ -11,9 +11,21 @@ export interface EstadoPrioridad {
   badgeTexto: string;
 }
 
+// Fecha local YYYY-MM-DD: toISOString() da UTC y en Chile cambia de día a las 20-21 h
+export function obtenerFechaHoy(): string {
+  const d = new Date();
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  const dia = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
 export function calcularDiasSinVisita(fechaStr?: string): number | null {
   if (!fechaStr) return null;
-  const fecha = new Date(fechaStr);
+  // new Date("YYYY-MM-DD") se lee como UTC y en Chile resta un día; se arma en hora local
+  const soloFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaStr);
+  const fecha = soloFecha
+    ? new Date(+soloFecha[1], +soloFecha[2] - 1, +soloFecha[3])
+    : new Date(fechaStr);
   if (isNaN(fecha.getTime())) return null;
 
   const hoy = new Date();

@@ -35,7 +35,7 @@ export default function ListaClientes() {
   const [direccion, setDireccion] = useState("");
 
   const handleAgregar = async () => {
-    await agregarCliente(nombre, rut, direccion);
+    if (!(await agregarCliente(nombre, rut, direccion))) return;
     setNombre("");
     setRut("");
     setDireccion("");

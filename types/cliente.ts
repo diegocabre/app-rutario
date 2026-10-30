@@ -25,6 +25,7 @@ export interface RegistroVisita {
   clienteId: string;
   horaVisita: string;
   nombreCliente: string;
+  ultimaVisitaAnterior?: string; // para restaurarla al deshacer la visita
 }
 
 export interface PuntoGPS {

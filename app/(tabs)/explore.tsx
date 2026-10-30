@@ -474,6 +474,7 @@ export default function MapaClientes() {
                     yaVisitadoHoy && styles.botonAccionYaVisitado,
                   ]}
                   onPress={() => manejarMarcarVisitado(clienteSeleccionado)}
+                  disabled={yaVisitadoHoy}
                 >
                   <Text
                     style={[
