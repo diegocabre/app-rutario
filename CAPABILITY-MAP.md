@@ -35,6 +35,11 @@ Una empresa usa el **panel administrador** (web, Next.js). Desde el panel crea a
 | `distribucion` | Build del APK con EAS y página de descarga en `rutario.solucionesdys.cl/descargar` | `demo-app` |
 | `facturacion` | Cobro automático (más adelante; por ahora manual) | `panel-auth` |
 
+## Avance
+- ✅ `demo-app` (repo app-rutario)
+- ✅ `backend-base` (repo rutario-panel: migración + 31 pruebas pgTAP, solo en local)
+- 📝 `panel-auth`: spec en borrador ([SPEC-panel-auth.md](SPEC-panel-auth.md))
+
 ## Orden de construcción
 - **En paralelo:** `demo-app` y `backend-base` (no dependen entre sí).
 - Luego: `panel-auth` → `vinculacion-qr` → `sync-app` → `panel-gestion`.
