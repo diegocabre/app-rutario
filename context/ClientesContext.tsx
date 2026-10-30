@@ -12,13 +12,18 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert } from "react-native";
+import { Alert, Linking } from "react-native";
 
 import { parsearCSV } from "@/services/csv";
 import {
   geocodificarDireccion,
   ResultadoGeocodificacion,
 } from "@/services/geocoding";
+import {
+  cuposDisponibles,
+  LIMITE_DEMO,
+  URL_PRODUCTO,
+} from "@/services/demo";
 import { obtenerFechaHoy } from "@/services/prioridad";
 import { obtenerRutaVialEntrePuntos } from "@/services/routing";
 import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
@@ -33,6 +38,18 @@ const STORAGE_KEY = "clientes";
 const STORAGE_KEY_VISITAS = "visitas";
 const STORAGE_KEY_TRACKING_PREFIJO = "tracking_trayectoria_";
 const STORAGE_KEY_TRACKING_KM_PREFIJO = "tracking_km_";
+const STORAGE_KEY_VINCULADA = "vinculada"; // lo pondrá en "true" vinculacion-qr
+
+function avisarLimiteDemo(): void {
+  Alert.alert(
+    `Versión demo: máximo ${LIMITE_DEMO} clientes`,
+    "Para agregar más clientes, vincula tu app con el QR de tu empresa. Conoce los planes de Ruta DyS en rutario.solucionesdys.cl.",
+    [
+      { text: "Cerrar", style: "cancel" },
+      { text: "Ver planes", onPress: () => Linking.openURL(URL_PRODUCTO) },
+    ],
+  );
+}
 
 type VisitasPorFecha = Record<string, RegistroVisita[]>;
 
@@ -109,6 +126,7 @@ async function direccionDesdeCoords(
 interface ClientesContextType {
   clientes: Cliente[];
   importando: boolean;
+  vinculada: boolean;
   progresoImport: { actual: number; total: number };
   agregando: boolean;
   agregarCliente: (
@@ -166,6 +184,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   const [importando, setImportando] = useState(false);
   const [progresoImport, setProgresoImport] = useState({ actual: 0, total: 0 });
   const [agregando, setAgregando] = useState(false);
+  const [vinculada, setVinculada] = useState(false);
 
   // Estados de Ruta Planificada
   const [ruta, setRuta] = useState<ClienteConDistancia[]>([]);
@@ -194,6 +213,9 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     cargarClientes();
     cargarTrayectoriaHoy();
+    AsyncStorage.getItem(STORAGE_KEY_VINCULADA)
+      .then((valor) => setVinculada(valor === "true"))
+      .catch((e) => console.error("Error leyendo vinculación", e));
   }, []);
 
   const cargarClientes = async (): Promise<void> => {
@@ -463,6 +485,11 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     rut: string,
     direccion: string,
   ): Promise<boolean> => {
+    if (cuposDisponibles(clientesRef.current.length, vinculada) === 0) {
+      avisarLimiteDemo();
+      return false;
+    }
+
     if (!nombre.trim() || !direccion.trim() || !rut.trim()) {
       Alert.alert("Faltan datos", "Nombre, RUT y dirección son obligatorios");
       return false;
@@ -510,6 +537,11 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   };
 
   const importarCSV = async (): Promise<void> => {
+    if (cuposDisponibles(clientesRef.current.length, vinculada) === 0) {
+      avisarLimiteDemo();
+      return;
+    }
+
     try {
       const resultado = await DocumentPicker.getDocumentAsync({
         type: ["text/csv", "text/comma-separated-values", "*/*"],
@@ -580,6 +612,15 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      // En demo solo entran los cupos que quedan; el resto se informa en el resumen
+      const cupos = cuposDisponibles(clientesRef.current.length, vinculada);
+      const fueraPorLimite = Math.max(0, nuevosClientes.length - cupos);
+      if (fueraPorLimite > 0) nuevosClientes.length = cupos;
+      const notaLimite =
+        fueraPorLimite > 0
+          ? `\n🔒 ${fueraPorLimite} quedaron fuera: la versión demo permite ${LIMITE_DEMO} clientes. Vincula tu app para importarlos todos.`
+          : "";
+
       await guardarClientes((lista) => [...lista, ...nuevosClientes]);
 
       if (!buscarPorDireccion) {
@@ -590,7 +631,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
             "Ubícalos con «Estoy aquí» cuando los visites, o desde el Mapa." +
             (duplicadosOmitidos > 0
               ? `\nℹ️ ${duplicadosOmitidos} duplicados omitidos.`
-              : ""),
+              : "") +
+            notaLimite,
         );
         return;
       }
@@ -624,7 +666,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
             : "") +
           (duplicadosOmitidos > 0
             ? `ℹ️ ${duplicadosOmitidos} duplicados omitidos.`
-            : ""),
+            : "") +
+          notaLimite,
       );
     } catch (e: any) {
       setImportando(false);
@@ -1001,6 +1044,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       value={{
         clientes,
         importando,
+        vinculada,
         progresoImport,
         agregando,
         agregarCliente,

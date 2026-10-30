@@ -1,6 +1,7 @@
 import ClienteTarjeta from "@/components/ClienteTarjeta";
 import { useClientes } from "@/context/ClientesContext";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { LIMITE_DEMO, URL_PRODUCTO } from "@/services/demo";
 import { Cliente } from "@/types/cliente";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -8,6 +9,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -32,6 +34,7 @@ export default function ListaClientes() {
     guardarCorreccionDireccion,
     guardarCorreccionRut,
     ubicarEnPosicionActual,
+    vinculada,
   } = useClientes();
   const router = useRouter();
 
@@ -83,6 +86,20 @@ export default function ListaClientes() {
               📡 Sin conexión — no se pueden ubicar clientes nuevos ahora
             </Text>
           </View>
+        )}
+
+        {!vinculada && (
+          <TouchableOpacity
+            style={styles.bannerDemo}
+            onPress={() => Linking.openURL(URL_PRODUCTO)}
+          >
+            <Text style={styles.bannerDemoTexto}>
+              {clientes.length <= LIMITE_DEMO
+                ? `Demo · ${clientes.length} de ${LIMITE_DEMO} clientes`
+                : `Demo · límite de ${LIMITE_DEMO} clientes alcanzado`}
+            </Text>
+            <Text style={styles.bannerDemoAccion}>Ver planes →</Text>
+          </TouchableOpacity>
         )}
 
         <Text style={styles.titulo}>Mis Clientes</Text>
@@ -216,6 +233,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bannerOfflineTexto: { color: "#92400e", fontSize: 12, textAlign: "center" },
+  bannerDemo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#eef2ff",
+    borderWidth: 1,
+    borderColor: "#c7d2fe",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  bannerDemoTexto: { color: "#3730a3", fontSize: 13, fontWeight: "600" },
+  bannerDemoAccion: { color: "#4338ca", fontSize: 13 },
   botonBorrarTodo: {
     backgroundColor: "#fff",
     borderWidth: 1,
