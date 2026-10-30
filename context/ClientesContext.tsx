@@ -25,6 +25,8 @@ import {
   URL_PRODUCTO,
 } from "@/services/demo";
 import { obtenerFechaHoy } from "@/services/prioridad";
+import { supabase } from "@/services/supabase";
+import { mensajeErrorVinculo } from "@/services/vinculo";
 import { obtenerRutaVialEntrePuntos } from "@/services/routing";
 import { formatearRut, formatoRutValido, limpiarRut } from "@/services/rut";
 import {
@@ -38,7 +40,8 @@ const STORAGE_KEY = "clientes";
 const STORAGE_KEY_VISITAS = "visitas";
 const STORAGE_KEY_TRACKING_PREFIJO = "tracking_trayectoria_";
 const STORAGE_KEY_TRACKING_KM_PREFIJO = "tracking_km_";
-const STORAGE_KEY_VINCULADA = "vinculada"; // lo pondrá en "true" vinculacion-qr
+const STORAGE_KEY_VINCULADA = "vinculada";
+const STORAGE_KEY_EMPRESA = "empresa";
 
 function avisarLimiteDemo(): void {
   Alert.alert(
@@ -127,6 +130,9 @@ interface ClientesContextType {
   clientes: Cliente[];
   importando: boolean;
   vinculada: boolean;
+  empresa: string | null;
+  /** Canjea el token del QR; devuelve el mensaje de error o null si quedó vinculada */
+  vincularCon: (token: string) => Promise<string | null>;
   progresoImport: { actual: number; total: number };
   agregando: boolean;
   agregarCliente: (
@@ -186,6 +192,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   const [progresoImport, setProgresoImport] = useState({ actual: 0, total: 0 });
   const [agregando, setAgregando] = useState(false);
   const [vinculada, setVinculada] = useState(false);
+  const [empresa, setEmpresa] = useState<string | null>(null);
 
   // Estados de Ruta Planificada
   const [ruta, setRuta] = useState<ClienteConDistancia[]>([]);
@@ -214,10 +221,51 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     cargarClientes();
     cargarTrayectoriaHoy();
-    AsyncStorage.getItem(STORAGE_KEY_VINCULADA)
-      .then((valor) => setVinculada(valor === "true"))
+    AsyncStorage.multiGet([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA])
+      .then(([[, valor], [, nombre]]) => {
+        setVinculada(valor === "true");
+        setEmpresa(nombre);
+        if (valor === "true") revisarVinculo();
+      })
       .catch((e) => console.error("Error leyendo vinculación", e));
   }, []);
+
+  // Si el admin desvinculó este teléfono, vuelve a demo y borra los datos de la empresa (son de ella, no del vendedor)
+  const revisarVinculo = async (): Promise<void> => {
+    const { data: sesion } = await supabase.auth.getSession();
+    const uid = sesion.session?.user.id;
+    if (!uid) return;
+    const { data, error } = await supabase.from("miembros").select("user_id").eq("user_id", uid).maybeSingle();
+    if (error || data) return; // sin señal o sigue vinculada
+    await AsyncStorage.multiRemove([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA, STORAGE_KEY_VISITAS]);
+    guardarClientes(() => []);
+    setRuta([]);
+    setVinculada(false);
+    setEmpresa(null);
+    await supabase.auth.signOut();
+    Alert.alert("Desvinculada", "Tu empresa desvinculó este teléfono. La app volvió al modo demo.");
+  };
+
+  const vincularCon = async (token: string): Promise<string | null> => {
+    try {
+      // Sesión anónima: el vendedor no crea cuenta, el QR lo identifica
+      const { data: sesion } = await supabase.auth.getSession();
+      if (!sesion.session) {
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) return mensajeErrorVinculo(error.message);
+      }
+      const { data: organizacionId, error } = await supabase.rpc("canjear_invitacion", { p_token: token });
+      if (error) return mensajeErrorVinculo(error.message);
+      const { data: org } = await supabase.from("organizaciones").select("nombre").eq("id", organizacionId).single();
+      const nombre = org?.nombre ?? "tu empresa";
+      await AsyncStorage.multiSet([[STORAGE_KEY_VINCULADA, "true"], [STORAGE_KEY_EMPRESA, nombre]]);
+      setVinculada(true);
+      setEmpresa(nombre);
+      return null;
+    } catch (e) {
+      return mensajeErrorVinculo(String(e));
+    }
+  };
 
   const cargarClientes = async (): Promise<void> => {
     try {
@@ -1077,6 +1125,8 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         clientes,
         importando,
         vinculada,
+        empresa,
+        vincularCon,
         progresoImport,
         agregando,
         agregarCliente,

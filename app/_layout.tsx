@@ -18,6 +18,7 @@ export default function RootLayout() {
       <ClientesProvider>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="vincular" options={{ presentation: 'modal', title: 'Vincular con mi empresa' }} />
         </Stack>
         <StatusBar style="auto" />
       </ClientesProvider>

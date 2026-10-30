@@ -36,6 +36,7 @@ export default function ListaClientes() {
     guardarCorreccionRut,
     ubicarEnPosicionActual,
     vinculada,
+    empresa,
   } = useClientes();
   const router = useRouter();
 
@@ -89,18 +90,24 @@ export default function ListaClientes() {
           </View>
         )}
 
-        {!vinculada && (
-          <TouchableOpacity
-            style={styles.bannerDemo}
-            onPress={() => Linking.openURL(URL_PRODUCTO)}
-          >
+        {vinculada ? (
+          <Text style={styles.textoVinculada}>Vinculada a {empresa}</Text>
+        ) : (
+          <View style={styles.bannerDemo}>
             <Text style={styles.bannerDemoTexto}>
               {clientes.length <= LIMITE_DEMO
                 ? `Demo · ${clientes.length} de ${LIMITE_DEMO} clientes`
                 : `Demo · límite de ${LIMITE_DEMO} clientes alcanzado`}
             </Text>
-            <Text style={styles.bannerDemoAccion}>Ver planes →</Text>
-          </TouchableOpacity>
+            <View style={styles.bannerDemoAcciones}>
+              <TouchableOpacity onPress={() => router.push("/vincular")}>
+                <Text style={styles.bannerDemoAccion}>Vincular con mi empresa</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => Linking.openURL(URL_PRODUCTO)}>
+                <Text style={styles.bannerDemoAccion}>Ver planes →</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         <Text style={styles.titulo}>Mis Clientes</Text>
@@ -245,9 +252,7 @@ const styles = StyleSheet.create({
   },
   bannerOfflineTexto: { color: "#92400e", fontSize: 12, textAlign: "center" },
   bannerDemo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: 6,
     backgroundColor: "#eef2ff",
     borderWidth: 1,
     borderColor: "#c7d2fe",
@@ -257,7 +262,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bannerDemoTexto: { color: "#3730a3", fontSize: 13, fontWeight: "600" },
-  bannerDemoAccion: { color: "#4338ca", fontSize: 13 },
+  bannerDemoAccion: { color: "#4338ca", fontSize: 13, fontWeight: "600", paddingVertical: 4 },
+  bannerDemoAcciones: { flexDirection: "row", justifyContent: "space-between" },
+  textoVinculada: { color: "#047857", fontSize: 13, fontWeight: "600", marginBottom: 8 },
   botonBorrarTodo: {
     backgroundColor: "#fff",
     borderWidth: 1,

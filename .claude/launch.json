@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rutario-panel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "E:/APP/rutario/rutario-panel", "run", "dev"],
+      "port": 3000,
+      "url": "http://localhost:3000"
+    }
+  ]
+}

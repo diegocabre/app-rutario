@@ -1,6 +1,6 @@
 # Spec: vinculacion-qr
 
-Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **borrador para aprobar** (nada construido). Depende de `backend-base` y `panel-auth` (ambos listos).
+Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado y construido** (1 vendedor en demo; al desvincular se borran los clientes del teléfono). Depende de `backend-base` y `panel-auth` (ambos listos).
 
 ## Objetivo
 El administrador agrega un vendedor en el panel y le muestra un QR. El vendedor lo escanea con la app, que queda vinculada a la empresa: sin límite de demo en la app y lista para `sync-app`. El admin puede desvincularlo.

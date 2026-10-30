@@ -64,7 +64,15 @@
           }
         }
       ],
-      "expo-mail-composer"
+      "expo-mail-composer",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ruta DyS usa la cámara para escanear el código QR que vincula la app con tu empresa.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
