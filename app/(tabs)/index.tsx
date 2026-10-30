@@ -28,6 +28,7 @@ export default function ListaClientes() {
     agregando,
     agregarCliente,
     importarCSV,
+    exportarClientes,
     borrarTodosLosClientes,
     eliminarCliente,
     reintentarGeocodificacion,
@@ -135,6 +136,16 @@ export default function ListaClientes() {
                 : "📂 Importar desde CSV"}
             </Text>
           </TouchableOpacity>
+          {clientes.length > 0 && (
+            <TouchableOpacity
+              style={styles.botonImportar}
+              onPress={exportarClientes}
+            >
+              <Text style={styles.botonImportarTexto}>
+                📤 Exportar {clientes.length} clientes (respaldo)
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.botonBorrarTodo}
             onPress={borrarTodosLosClientes}

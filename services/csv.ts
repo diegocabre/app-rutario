@@ -1,3 +1,5 @@
+import type { Cliente } from "@/types/cliente";
+
 export interface FilaCSV {
   nombre: string;
   rut: string;
@@ -75,4 +77,23 @@ export function parsearCSV(contenido: string): FilaCSV[] {
   }
 
   return filas;
+}
+
+function campoCSV(valor: string | number | undefined): string {
+  const texto = valor === undefined ? "" : String(valor);
+  // El parser no entiende comillas escapadas: se reemplazan por simples
+  return /[;"\n]/.test(texto) ? `"${texto.replace(/"/g, "'")}"` : texto;
+}
+
+// Respaldo con coordenadas; los encabezados nombre/rut/direccion/ultima_visita se pueden volver a importar
+export function generarCSVClientes(clientes: Cliente[]): string {
+  const encabezado = "nombre;rut;direccion;lat;lng;estado_ubicacion;ultima_visita";
+  const filas = clientes.map((c) =>
+    [c.nombre, c.rut, c.direccion, c.lat, c.lng, c.geoStatus, c.ultimaVisita]
+      .map(campoCSV)
+      .join(";"),
+  );
+  // BOM para que Excel lea bien los acentos
+  const BOM = String.fromCharCode(0xfeff);
+  return BOM + [encabezado, ...filas].join("\n");
 }

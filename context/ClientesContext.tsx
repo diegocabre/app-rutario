@@ -14,7 +14,7 @@ import React, {
 } from "react";
 import { Alert, Linking } from "react-native";
 
-import { parsearCSV } from "@/services/csv";
+import { generarCSVClientes, parsearCSV } from "@/services/csv";
 import {
   geocodificarDireccion,
   ResultadoGeocodificacion,
@@ -135,6 +135,7 @@ interface ClientesContextType {
     direccion: string,
   ) => Promise<boolean>;
   importarCSV: () => Promise<void>;
+  exportarClientes: () => Promise<void>;
   eliminarCliente: (id: string) => void;
   reintentarGeocodificacion: (clienteId: string) => Promise<void>;
   guardarCorreccionDireccion: (
@@ -676,6 +677,37 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Respaldo con coordenadas por correo (sirve también para cargar los clientes en el panel)
+  const exportarClientes = async (): Promise<void> => {
+    const lista = clientesRef.current;
+    if (lista.length === 0) {
+      Alert.alert("Sin clientes", "No hay clientes para exportar.");
+      return;
+    }
+    if (!(await MailComposer.isAvailableAsync())) {
+      Alert.alert(
+        "Sin app de correo",
+        "No se encontró una app de correo configurada en este teléfono.",
+      );
+      return;
+    }
+    try {
+      const ruta = `${FileSystem.cacheDirectory}clientes_${obtenerFechaHoy()}.csv`;
+      await FileSystem.writeAsStringAsync(ruta, generarCSVClientes(lista), {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      const ubicados = lista.filter((c) => c.lat != null && c.lng != null);
+      await MailComposer.composeAsync({
+        subject: `Respaldo de clientes — ${new Date().toLocaleDateString("es-CL")}`,
+        body: `${lista.length} clientes (${ubicados.length} con ubicación GPS).`,
+        attachments: [ruta],
+      });
+    } catch (e) {
+      console.error("Error exportando clientes", e);
+      Alert.alert("Error", "No se pudieron exportar los clientes.");
+    }
+  };
+
   const actualizarUbicacionManual = async (
     clienteId: string,
     lat: number,
@@ -1049,6 +1081,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         agregando,
         agregarCliente,
         importarCSV,
+        exportarClientes,
         eliminarCliente,
         reintentarGeocodificacion,
         guardarCorreccionDireccion,
