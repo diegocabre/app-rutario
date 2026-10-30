@@ -1,6 +1,6 @@
 # Spec: panel-auth
 
-Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **borrador para aprobar** (escrito mientras dormías; nada de esto está construido).
+Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado y construido** en `rutario-panel`; falta publicarlo en Vercel.
 
 ## Objetivo
 Publicar `rutario.solucionesdys.cl` con la portada del producto, el registro de empresas (que parten en plan demo), el login de administradores y una vista de superadmin donde tú pasas empresas a "pagado".
