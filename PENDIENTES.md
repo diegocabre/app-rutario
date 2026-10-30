@@ -24,7 +24,13 @@
 - Si la empresa la desvincula, la app vuelve a demo y borra los datos de la empresa.
 - Íconos nuevos: app, Android adaptable, splash y favicon.
 
-## ⏳ Lo que falta, en orden
+## ✅ Hecho el 30-10 en la noche
+- Comandos de Supabase corridos; panel en línea en https://rutario.solucionesdys.cl.
+- Registro y confirmación por correo probados; `desarrollador@solucionesdys.cl` es superadmin.
+- App vinculada a Soluciones DyS Spa escaneando el QR (con Expo Go).
+- Logo del panel cambiado al de Ruta DyS.
+
+## ⏳ Lo que falta, en orden (los pasos 1 a 4 ya están hechos)
 
 ### 1. Supabase: 2 comandos (en el PC, carpeta `E:\APP\rutario\rutario-panel`)
 ```bash
