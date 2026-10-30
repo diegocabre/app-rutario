@@ -29,8 +29,9 @@
 - Registro y confirmación por correo probados; `desarrollador@solucionesdys.cl` es superadmin.
 - App vinculada a Soluciones DyS Spa escaneando el QR (con Expo Go).
 - Logo del panel cambiado al de Ruta DyS.
+- APK 1.0.0 publicado (release v1.0.0 de `app-rutario`) y enlazado en `/descargar`.
 
-## ⏳ Lo que falta, en orden (los pasos 1 a 4 ya están hechos)
+## ⏳ Lo que falta, en orden (los pasos 1 a 5 ya están hechos)
 
 ### 1. Supabase: 2 comandos (en el PC, carpeta `E:\APP\rutario\rutario-panel`)
 ```bash
