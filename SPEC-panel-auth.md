@@ -52,7 +52,7 @@ Siguiendo tu flujo: dirección visual con `design-taste-frontend`, pulido con `/
 - **Nunca:** usar la `service_role` key en el navegador; permitir que un admin cambie su propio plan.
 
 ## Lo que necesito de ti
-1. **Proyecto en supabase.com** (región São Paulo) y su *project ref*, para conectar el panel publicado.
+1. ~~Proyecto en supabase.com~~ ✅ `fvbabpruitngkyxhzgrw` (https://fvbabpruitngkyxhzgrw.supabase.co).
 2. **OK para crear el proyecto `rutario-panel` en Vercel** con el dominio `rutario.solucionesdys.cl` (no hay que tocar DNS).
 3. **¿Confirmación por correo al registrarse?** Recomiendo sí, para evitar empresas falsas.
 4. Logo y colores de Soluciones DyS, si los tienes a mano.
