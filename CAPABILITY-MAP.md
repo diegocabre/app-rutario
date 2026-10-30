@@ -39,6 +39,7 @@ Una empresa usa el **panel administrador** (web, Next.js). Desde el panel crea a
 - ✅ `demo-app` (repo app-rutario)
 - ✅ `backend-base` (repo rutario-panel: migración + 31 pruebas pgTAP, solo en local)
 - ✅ `panel-auth` (repo rutario-panel: Next.js 16, 10 E2E desktop+móvil, 34 pruebas pgTAP; falta publicar en Vercel)
+- 📝 `vinculacion-qr`: spec en borrador ([SPEC-vinculacion-qr.md](SPEC-vinculacion-qr.md))
 
 ## Orden de construcción
 - **En paralelo:** `demo-app` y `backend-base` (no dependen entre sí).
