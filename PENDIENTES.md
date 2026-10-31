@@ -1,78 +1,58 @@
-# Ruta DyS: resumen y pendientes (30-10-2026)
+# Ruta DyS: hecho y pendiente (31-10-2026)
 
-## ✅ Lo que ya está hecho
+## ✅ Lanzado
 
-**Base de datos (Supabase, proyecto `fvbabpruitngkyxhzgrw`)**
-- Tablas de empresas, vendedores, clientes, visitas y recorridos, y cada empresa ve solo lo suyo.
-- Plan demo: **2 clientes** y **1 vendedor**, y esos límites los aplica la base de datos.
-- QR de vinculación: sirve una vez y vence en 24 h.
+- **Panel:** en línea en https://rutario.solucionesdys.cl (Vercel, repo `rutario-panel` privado).
+- **App Android:** APK 1.0.0 descargable en https://rutario.solucionesdys.cl/descargar (release v1.0.0 de `app-rutario`). Ya se instaló y probó en un teléfono.
+- **Superadmin:** `desarrollador@solucionesdys.cl`.
+
+**Base de datos (Supabase `fvbabpruitngkyxhzgrw`)**
+- Cada empresa ve solo sus propios datos.
+- El plan demo permite **2 clientes** y **1 vendedor**, y la base lo controla.
+- El QR de vinculación sirve una vez y vence en 24 h.
+- Ingreso anónimo activado para la app.
+- Configuración de autenticación aplicada: URL del sitio y contraseñas de 10 caracteres.
 - Pasan 40 pruebas automáticas.
-- En la nube: tablas, reglas y función de superadmin aplicadas. El ingreso anónimo lo activaste tú.
 
-**Panel web (`rutario-panel`)**
-- Portada, descarga (por ahora dice «muy pronto»), registro con confirmación por correo, login y panel con el plan.
-- **Vendedores**: crear QR, ver invitaciones pendientes, revocar y desvincular.
-- **Superadmin** (`/superadmin`): ves todas las empresas y activas el plan pagado.
-- **Privacidad** y **Términos**, según la Ley 19.628 y la Ley 21.719. Solo usa cookies de sesión, sin banner.
-- **Seguridad:** el navegador nunca ve claves de Supabase, las contraseñas tienen mínimo 10 caracteres con mayúsculas, minúsculas y números, y el sitio envía cabeceras de seguridad.
-- Pasan 12 pruebas en navegador (desktop y móvil).
-- Favicon e ícono de Apple.
+**Panel web**
+- Portada, registro con confirmación por correo (probado) y login.
+- Panel con el plan de la empresa, y cabecera «Ruta DyS · empresa» con el logo de la app.
+- **Vendedores:** crear QR, revocar invitaciones y desvincular.
+- **Superadmin:** ver todas las empresas y cambiar el plan entre demo y pagado.
+- **Descargar:** botón del APK. Siempre apunta al último release.
+- Privacidad y Términos según las leyes 19.628 y 21.719. Solo usa cookies de sesión, por eso no lleva banner.
+- **Seguridad:** el navegador nunca ve claves y el sitio envía cabeceras de seguridad. Pasan 12 pruebas en navegador.
 
-**App (`rutario-app`)**
-- Modo demo con 2 clientes, importación de clientes, ubicación en terreno, edición de direcciones y exportación a CSV.
-- Botón **Vincular con mi empresa**: escanea el QR (o se pega el enlace) y la app queda vinculada.
-- Si la empresa la desvincula, la app vuelve a demo y borra los datos de la empresa.
-- Íconos nuevos: app, Android adaptable, splash y favicon.
+**App**
+- Modo demo con 2 clientes, importación desde CSV, ubicación, edición de direcciones y exportación.
+- **Vincular con mi empresa:** se escanea o se pega el QR (probado en producción).
+- Si la empresa la desvincula, la app vuelve a demo y borra los clientes.
 
-## ✅ Hecho el 30-10 en la noche
-- Comandos de Supabase corridos; panel en línea en https://rutario.solucionesdys.cl.
-- Registro y confirmación por correo probados; `desarrollador@solucionesdys.cl` es superadmin.
-- App vinculada a Soluciones DyS Spa escaneando el QR (con Expo Go).
-- Logo del panel cambiado al de Ruta DyS.
-- APK 1.0.0 publicado (release v1.0.0 de `app-rutario`) y enlazado en `/descargar`.
+## ⏳ Lo que falta
 
-## ⏳ Lo que falta, en orden (los pasos 1 a 5 ya están hechos)
+### Pronto (cosas tuyas, sin código)
+1. **Clave de Google Maps:** en Google Cloud, restríngela a apps Android con el paquete `com.diegocabre.rutarioapp`. Hoy está a la vista en el repo público `app-rutario`.
+2. **Textos legales:** son un borrador. Revísalos con un abogado y confirma el plazo de **90 días** para borrar los datos al cerrar una cuenta.
+3. **Tu teléfono con 23 clientes:** son de una instalación anterior. Para dejarlo en 0:
+   1. Desvincúlalo en el panel.
+   2. Reabre la app con internet.
+   3. Vuelve a vincularlo con un QR nuevo.
+4. **(Opcional) DNS:** Vercel recomienda cambiar el registro A de `rutario` por el CNAME que muestra. El registro actual sigue funcionando.
 
-### 1. Supabase: 2 comandos (en el PC, carpeta `E:\APP\rutario\rutario-panel`)
-```bash
-npx supabase@2.122.0 db push --linked
-npx supabase@2.122.0 config push --yes
-```
-- El primero sube el límite de 1 vendedor en demo.
-- El segundo configura la URL del sitio, los enlaces de confirmación y las contraseñas de 10 caracteres.
+### Próximos módulos (código)
+1. **Recuperar contraseña** en el panel.
+2. **`sync-app`:** la app vinculada baja sus clientes asignados y sube visitas y km. Es lo que hace útil el plan pagado.
+3. **`panel-gestion`:** mapa, importación y asignación de clientes, y reportes (en demo, parciales).
+4. **Facturación:** hoy el cobro es manual y el plan se cambia desde Superadmin.
+5. **Captura real de la app** en la portada.
 
-### 2. Publicar el panel en Vercel (se puede desde el celular)
-1. Entra a vercel.com y abre Add New → Project.
-2. Importa `diegocabre/rutario-panel`, en el equipo Soluciones DyS.
-3. Agrega estas variables de entorno:
-   - `SUPABASE_URL` = `https://fvbabpruitngkyxhzgrw.supabase.co`
-   - `SUPABASE_PUBLISHABLE_KEY` = la *Publishable key*, en Supabase → Project Settings → API Keys. **No uses la secret.**
-   - `SITE_URL` = `https://rutario.solucionesdys.cl`
-4. Toca Deploy.
-5. En Settings → Domains, agrega `rutario.solucionesdys.cl`. No hay que tocar DNS.
-
-### 3. Probar el correo de registro
-- Regístrate en `rutario.solucionesdys.cl/registro` con un correo **que no sea del equipo de Supabase**.
-- Si no llega el correo, hay que conectar un SMTP: crea una cuenta en Resend, verifica `solucionesdys.cl` y pon sus datos en Supabase → Authentication → SMTP Settings.
-
-### 4. Hacerte superadmin
-1. Regístrate en el panel con tu correo.
-2. Ve a Supabase → SQL Editor y corre esto con tu correo:
-```sql
-insert into public.superadmins select id from auth.users where email = 'TU_CORREO';
-```
-
-### 5. APK para descargar (lo armamos juntos en el PC)
-- Inicia sesión en EAS con `npx eas-cli login`.
-- Hay que cargar en EAS las variables de la app (`EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) y construir el APK.
-- Después se publica en `rutario.solucionesdys.cl/descargar`.
-
-### 6. Revisar
-- **Textos legales:** son un borrador; revísalos con un abogado. Confirma el plazo de **90 días** para borrar los datos al cerrar una cuenta.
-- **Repo `rutario-panel`:** pásalo a **privado** en GitHub.
-
-## Después del lanzamiento
-- **Recuperar contraseña** en el panel.
-- **Captura real de la app** en la portada.
-- **`sync-app`:** la app vinculada baja sus clientes asignados y sube visitas y km.
-- **`panel-gestion`:** mapa, importar clientes, asignarlos y reportes.
+### Cómo publicar una versión nueva de la app
+1. En `rutario-app`, construye el APK:
+   ```bash
+   npx eas-cli build --platform android --profile preview
+   ```
+2. Descarga el APK y súbelo como release nuevo:
+   ```bash
+   gh release create vX.Y.Z ruta-dys.apk --repo diegocabre/app-rutario
+   ```
+   El archivo debe llamarse `ruta-dys.apk`. Así `/descargar` toma la versión nueva sin tocar el panel.
