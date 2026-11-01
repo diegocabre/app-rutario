@@ -1,6 +1,6 @@
 # Spec: sync-app
 
-Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **borrador, falta tu aprobación**. Depende de `vinculacion-qr` (listo).
+Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado el 01-11**. Depende de `vinculacion-qr` (listo).
 
 ## Objetivo
 Un teléfono vinculado trabaja con los clientes que la empresa le asignó en el panel. Registra visitas y km aunque no tenga señal, y los sube cuando vuelve la conexión. Así el admin ve en el panel el avance real de cada vendedor. Esto es lo que hace útil el plan pagado.
@@ -31,7 +31,16 @@ Un teléfono vinculado trabaja con los clientes que la empresa le asignó en el 
 - **Preguntar antes:** subir la migración a la nube y publicar un APK nuevo.
 - **Nunca:** subir datos de una app en demo, ni usar la secret key.
 
-## Preguntas abiertas
-1. **¿Cómo llegan los clientes al vendedor?** Hoy el panel no tiene cómo cargarlos ni asignarlos (eso es `panel-gestion`), así que una app vinculada bajaría 0 clientes. Recomiendo **incluir en este módulo lo mínimo del panel**: importar un CSV de clientes y asignarlos a un vendedor. El mapa y los reportes quedarían para `panel-gestion`.
-2. **¿El vendedor vinculado puede crear clientes desde la app?** Hoy la base no se lo permite. Recomiendo que **no**: los clientes los maneja la empresa. En modo vinculado se ocultan «Agregar» e «Importar».
-3. **¿Cada cuánto subir km?** Propongo cada 15 min con señal y al cerrar la jornada. Así el admin ve el avance durante el día sin gastar mucha batería ni datos.
+## Decisiones (01-11)
+1. **Los clientes los carga el admin** en el panel, nueva página **Clientes**:
+   - Importa un CSV con el mismo formato que exporta la app (nombre, rut, dirección y, si vienen, coordenadas y última visita).
+   - Elige a qué vendedor asignarlo y puede reasignar cliente por cliente.
+   - El mapa y los reportes quedan para `panel-gestion`.
+2. **El vendedor no crea clientes, pero sí prospectos.** En modo vinculado, «+ Agregar Cliente» pasa a ser «+ Agregar prospecto»:
+   - Usa los mismos campos (nombre, RUT y dirección) y, si hay GPS, la ubicación actual.
+   - El prospecto entra a la cola y sube a la tabla nueva `prospectos`.
+   - En el panel, el admin lo **convierte en cliente** (asignado a ese vendedor) o lo **descarta**.
+   - «Importar CSV» se oculta en modo vinculado.
+3. **Km:** se suben cada 15 min con señal y al cerrar la jornada.
+
+Además, para que **última visita** quede bien en el panel, la base la actualiza sola con un trigger cuando se sube o se deshace una visita.
