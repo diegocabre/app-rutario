@@ -42,7 +42,7 @@
 ### Próximos módulos (código)
 1. ~~**Recuperar contraseña** en el panel.~~ Hecho el 01-11: el enlace «¿Olvidaste tu contraseña?» está en el login.
 2. ~~**`sync-app`**~~ Construido el 01-11: el panel tiene la página Clientes (importar, asignar y prospectos) y la app sincroniza. **Para publicarlo:** corre `npx supabase@2.122.0 db push --linked` en `rutario-panel`; después hay que armar y publicar el APK 1.1.0.
-3. ~~**`panel-gestion`**~~ Construido el 02-11: mapa con recorridos, reportes por día y semana con CSV (parciales en demo), historial que se conserva al desvincular y retención de GPS de 90 días. **Para publicarlo:** `npx supabase@2.122.0 db push --linked --workdir E:\APPutarioutario-panel`.
+3. ~~**`panel-gestion`**~~ Construido el 02-11: mapa con recorridos, reportes por día y semana con CSV (parciales en demo), historial que se conserva al desvincular y retención de GPS de 90 días. **Para publicarlo:** `npx supabase@2.122.0 db push --linked --workdir E:\APP\rutario\rutario-panel`.
 4. **Facturación:** hoy el cobro es manual y el plan se cambia desde Superadmin.
 5. **Captura real de la app** en la portada.
 
