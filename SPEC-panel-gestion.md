@@ -27,6 +27,15 @@ El admin ve en el panel dónde están sus clientes, por dónde anduvo cada vende
   - Las semanas anteriores aparecen bloqueadas, con el aviso «Disponible en plan pagado».
   - El CSV no se puede descargar.
 
+### 4. Detalles menores (incluidos en este módulo)
+- **App:** en la lista de clientes, el gesto de arrastrar hacia abajo sincroniza con la empresa.
+- **Clientes en el panel:** buscador por nombre, RUT o dirección y paginación de 50 en 50, en vez del tope de 500.
+- **Convertir en cliente:** si el plan demo llegó a su límite, el aviso aparece en la misma página y no en una pantalla de error.
+
+### 5. Captura real en la portada
+- **Tú me envías** una captura de la app desde tu teléfono, con clientes de prueba. No debe tener datos de clientes reales.
+- **Yo la pongo** en la portada, en lugar de la ilustración, en una versión optimizada para la web.
+
 ## Decisiones técnicas
 - **Mapa: Leaflet con OpenStreetMap.**
   - Gratis y sin clave, así que no queda ninguna clave expuesta en el navegador.
