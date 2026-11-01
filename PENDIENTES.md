@@ -30,7 +30,7 @@
 
 ## ⏳ Lo que falta
 
-### Pronto (cosas tuyas, sin código)
+### Pronto (cosas tuyas, sin código) — hechos el 01-11
 1. **Clave de Google Maps:** en Google Cloud, restríngela a apps Android con el paquete `com.diegocabre.rutarioapp`. Hoy está a la vista en el repo público `app-rutario`.
 2. **Textos legales:** son un borrador. Revísalos con un abogado y confirma el plazo de **90 días** para borrar los datos al cerrar una cuenta.
 3. **Tu teléfono con 23 clientes:** son de una instalación anterior. Para dejarlo en 0:
@@ -40,7 +40,7 @@
 4. **(Opcional) DNS:** Vercel recomienda cambiar el registro A de `rutario` por el CNAME que muestra. El registro actual sigue funcionando.
 
 ### Próximos módulos (código)
-1. **Recuperar contraseña** en el panel.
+1. ~~**Recuperar contraseña** en el panel.~~ Hecho el 01-11: el enlace «¿Olvidaste tu contraseña?» está en el login.
 2. **`sync-app`:** la app vinculada baja sus clientes asignados y sube visitas y km. Es lo que hace útil el plan pagado.
 3. **`panel-gestion`:** mapa, importación y asignación de clientes, y reportes (en demo, parciales).
 4. **Facturación:** hoy el cobro es manual y el plan se cambia desde Superadmin.
