@@ -1,6 +1,6 @@
 # Spec: panel-gestion
 
-Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **borrador, falta tu aprobación**. Depende de `sync-app` (construido).
+Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado y construido el 02-11** (falta subir 2 migraciones a la nube y la captura real de la app). Depende de `sync-app` (construido).
 
 ## Objetivo
 El admin ve en el panel dónde están sus clientes, por dónde anduvo cada vendedor y cuánto trabajó cada uno, por día y por semana. En plan demo el reporte es parcial, para que la empresa vea el valor antes de pagar. El historial de un vendedor se conserva aunque se desvincule.

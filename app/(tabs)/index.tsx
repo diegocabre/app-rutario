@@ -8,6 +8,7 @@ import { useState } from "react";
 import {
   Alert,
   FlatList,
+  RefreshControl,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -56,6 +57,7 @@ export default function ListaClientes() {
   const [nombre, setNombre] = useState("");
   const [direccion, setDireccion] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [refrescando, setRefrescando] = useState(false);
 
   const texto = busqueda.trim().toUpperCase();
   const clientesFiltrados = texto
@@ -224,6 +226,19 @@ export default function ListaClientes() {
           keyExtractor={(item) => item.id}
           style={styles.lista}
           keyboardShouldPersistTaps="handled"
+          // Vinculada: arrastrar hacia abajo sincroniza con la empresa
+          refreshControl={
+            vinculada ? (
+              <RefreshControl
+                refreshing={refrescando}
+                onRefresh={async () => {
+                  setRefrescando(true);
+                  await sincronizar();
+                  setRefrescando(false);
+                }}
+              />
+            ) : undefined
+          }
           ListEmptyComponent={
             <Text style={styles.vacio}>
               {texto
