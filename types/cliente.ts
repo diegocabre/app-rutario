@@ -23,6 +23,7 @@ export interface ClienteConDistancia extends Cliente {
 }
 
 export interface RegistroVisita {
+  id?: string; // UUID para subirla sin duplicar; registros antiguos (demo) no lo tienen
   clienteId: string;
   horaVisita: string;
   nombreCliente: string;

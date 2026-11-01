@@ -1,6 +1,6 @@
 # Spec: sync-app
 
-Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado el 01-11**. Depende de `vinculacion-qr` (listo).
+Módulo de [CAPABILITY-MAP.md](CAPABILITY-MAP.md). Estado: **aprobado y construido el 01-11** (falta subir la migración a la nube y publicar APK 1.1.0). Pendiente menor: el gesto de arrastrar para recargar se reemplazó por tocar la línea «Vinculada a…». Depende de `vinculacion-qr` (listo).
 
 ## Objetivo
 Un teléfono vinculado trabaja con los clientes que la empresa le asignó en el panel. Registra visitas y km aunque no tenga señal, y los sube cuando vuelve la conexión. Así el admin ve en el panel el avance real de cada vendedor. Esto es lo que hace útil el plan pagado.

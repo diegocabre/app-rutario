@@ -19,6 +19,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+function haceCuanto(fechaIso: string): string {
+  const minutos = Math.round(
+    (Date.now() - new Date(fechaIso).getTime()) / 60000,
+  );
+  if (minutos < 1) return "recién";
+  if (minutos < 60) return `hace ${minutos} min`;
+  return `hace ${Math.round(minutos / 60)} h`;
+}
+
 export default function ListaClientes() {
   const conectado = useNetworkStatus();
   const {
@@ -37,6 +46,9 @@ export default function ListaClientes() {
     ubicarEnPosicionActual,
     vinculada,
     empresa,
+    pendientesSync,
+    ultimaSync,
+    sincronizar,
   } = useClientes();
   const router = useRouter();
 
@@ -91,7 +103,19 @@ export default function ListaClientes() {
         )}
 
         {vinculada ? (
-          <Text style={styles.textoVinculada}>Vinculada a {empresa}</Text>
+          <TouchableOpacity
+            onPress={sincronizar}
+            accessibilityHint="Sincroniza ahora con tu empresa"
+          >
+            <Text style={styles.textoVinculada}>
+              Vinculada a {empresa} ·{" "}
+              {pendientesSync > 0
+                ? `${pendientesSync} por subir`
+                : ultimaSync
+                  ? `sincronizado ${haceCuanto(ultimaSync)}`
+                  : "sin sincronizar"}
+            </Text>
+          </TouchableOpacity>
         ) : (
           <View style={styles.bannerDemo}>
             <Text style={styles.bannerDemoTexto}>
@@ -101,7 +125,9 @@ export default function ListaClientes() {
             </Text>
             <View style={styles.bannerDemoAcciones}>
               <TouchableOpacity onPress={() => router.push("/vincular")}>
-                <Text style={styles.bannerDemoAccion}>Vincular con mi empresa</Text>
+                <Text style={styles.bannerDemoAccion}>
+                  Vincular con mi empresa
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => Linking.openURL(URL_PRODUCTO)}>
                 <Text style={styles.bannerDemoAccion}>Ver planes →</Text>
@@ -115,14 +141,16 @@ export default function ListaClientes() {
         <View style={styles.formulario}>
           <TextInput
             style={styles.input}
-            placeholder="RUT (ej: 12345678-9)"
+            placeholder={vinculada ? "RUT (opcional)" : "RUT (ej: 12345678-9)"}
             value={rut}
             onChangeText={setRut}
             autoCapitalize="characters"
           />
           <TextInput
             style={styles.input}
-            placeholder="Nombre del cliente"
+            placeholder={
+              vinculada ? "Nombre del prospecto" : "Nombre del cliente"
+            }
             value={nombre}
             onChangeText={setNombre}
           />
@@ -132,17 +160,20 @@ export default function ListaClientes() {
             value={direccion}
             onChangeText={setDireccion}
           />
-          <TouchableOpacity
-            style={styles.botonImportar}
-            onPress={importarCSV}
-            disabled={importando}
-          >
-            <Text style={styles.botonImportarTexto}>
-              {importando
-                ? `Geocodificando ${progresoImport.actual}/${progresoImport.total}...`
-                : "📂 Importar desde CSV"}
-            </Text>
-          </TouchableOpacity>
+          {/* Vinculada: la cartera la carga la empresa en el panel */}
+          {!vinculada && (
+            <TouchableOpacity
+              style={styles.botonImportar}
+              onPress={importarCSV}
+              disabled={importando}
+            >
+              <Text style={styles.botonImportarTexto}>
+                {importando
+                  ? `Geocodificando ${progresoImport.actual}/${progresoImport.total}...`
+                  : "📂 Importar desde CSV"}
+              </Text>
+            </TouchableOpacity>
+          )}
           {clientes.length > 0 && (
             <TouchableOpacity
               style={styles.botonImportar}
@@ -153,21 +184,27 @@ export default function ListaClientes() {
               </Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            style={styles.botonBorrarTodo}
-            onPress={borrarTodosLosClientes}
-          >
-            <Text style={styles.botonBorrarTodoTexto}>
-              🗑️ Borrar todos los clientes
-            </Text>
-          </TouchableOpacity>
+          {!vinculada && (
+            <TouchableOpacity
+              style={styles.botonBorrarTodo}
+              onPress={borrarTodosLosClientes}
+            >
+              <Text style={styles.botonBorrarTodoTexto}>
+                🗑️ Borrar todos los clientes
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.boton, agregando && styles.botonDeshabilitado]}
             onPress={handleAgregar}
             disabled={agregando}
           >
             <Text style={styles.botonTexto}>
-              {agregando ? "Agregando..." : "+ Agregar Cliente"}
+              {agregando
+                ? "Agregando..."
+                : vinculada
+                  ? "+ Agregar prospecto"
+                  : "+ Agregar Cliente"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -262,9 +299,19 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bannerDemoTexto: { color: "#3730a3", fontSize: 13, fontWeight: "600" },
-  bannerDemoAccion: { color: "#4338ca", fontSize: 13, fontWeight: "600", paddingVertical: 4 },
+  bannerDemoAccion: {
+    color: "#4338ca",
+    fontSize: 13,
+    fontWeight: "600",
+    paddingVertical: 4,
+  },
   bannerDemoAcciones: { flexDirection: "row", justifyContent: "space-between" },
-  textoVinculada: { color: "#047857", fontSize: 13, fontWeight: "600", marginBottom: 8 },
+  textoVinculada: {
+    color: "#047857",
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
   botonBorrarTodo: {
     backgroundColor: "#fff",
     borderWidth: 1,

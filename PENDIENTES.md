@@ -41,7 +41,7 @@
 
 ### Próximos módulos (código)
 1. ~~**Recuperar contraseña** en el panel.~~ Hecho el 01-11: el enlace «¿Olvidaste tu contraseña?» está en el login.
-2. **`sync-app`:** la app vinculada baja sus clientes asignados y sube visitas y km. Es lo que hace útil el plan pagado.
+2. ~~**`sync-app`**~~ Construido el 01-11: el panel tiene la página Clientes (importar, asignar y prospectos) y la app sincroniza. **Para publicarlo:** corre `npx supabase@2.122.0 db push --linked` en `rutario-panel`; después hay que armar y publicar el APK 1.1.0.
 3. **`panel-gestion`:** mapa, importación y asignación de clientes, y reportes (en demo, parciales).
 4. **Facturación:** hoy el cobro es manual y el plan se cambia desde Superadmin.
 5. **Captura real de la app** en la portada.

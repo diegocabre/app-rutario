@@ -12,9 +12,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Linking } from "react-native";
+import { Alert, AppState, Linking } from "react-native";
 
+import { agregarACola, clientesDesdeServidor, uuid, type Pendiente } from "@/services/cola";
 import { generarCSVClientes, parsearCSV } from "@/services/csv";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 import {
   geocodificarDireccion,
   ResultadoGeocodificacion,
@@ -42,6 +44,10 @@ const STORAGE_KEY_TRACKING_PREFIJO = "tracking_trayectoria_";
 const STORAGE_KEY_TRACKING_KM_PREFIJO = "tracking_km_";
 const STORAGE_KEY_VINCULADA = "vinculada";
 const STORAGE_KEY_EMPRESA = "empresa";
+const STORAGE_KEY_COLA = "cola_sync";
+const STORAGE_KEY_ULTIMA_SYNC = "ultima_sync";
+// Cada cuánto se sube el avance (km y lo pendiente) mientras hay señal
+const INTERVALO_SYNC_MS = 15 * 60 * 1000;
 
 function avisarLimiteDemo(): void {
   Alert.alert(
@@ -131,6 +137,11 @@ interface ClientesContextType {
   importando: boolean;
   vinculada: boolean;
   empresa: string | null;
+  /** Cambios hechos en terreno que aún no suben a la empresa */
+  pendientesSync: number;
+  /** Fecha ISO de la última sincronización completa */
+  ultimaSync: string | null;
+  sincronizar: () => Promise<void>;
   /** Canjea el token del QR; devuelve el mensaje de error o null si quedó vinculada */
   vincularCon: (token: string) => Promise<string | null>;
   progresoImport: { actual: number; total: number };
@@ -193,6 +204,13 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   const [agregando, setAgregando] = useState(false);
   const [vinculada, setVinculada] = useState(false);
   const [empresa, setEmpresa] = useState<string | null>(null);
+  // Refs para las funciones async: sus closures verían valores viejos
+  const vinculadaRef = useRef(false);
+  const colaRef = useRef<Pendiente[]>([]);
+  const sincronizandoRef = useRef(false);
+  const [pendientesSync, setPendientesSync] = useState(0);
+  const [ultimaSync, setUltimaSync] = useState<string | null>(null);
+  const conectado = useNetworkStatus();
 
   // Estados de Ruta Planificada
   const [ruta, setRuta] = useState<ClienteConDistancia[]>([]);
@@ -221,23 +239,26 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     cargarClientes();
     cargarTrayectoriaHoy();
-    AsyncStorage.multiGet([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA])
-      .then(([[, valor], [, nombre]]) => {
+    AsyncStorage.multiGet([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA, STORAGE_KEY_COLA, STORAGE_KEY_ULTIMA_SYNC])
+      .then(([[, valor], [, nombre], [, cola], [, ultima]]) => {
+        colaRef.current = cola ? (JSON.parse(cola) as Pendiente[]) : [];
+        setPendientesSync(colaRef.current.length);
+        setUltimaSync(ultima);
+        vinculadaRef.current = valor === "true";
         setVinculada(valor === "true");
         setEmpresa(nombre);
-        if (valor === "true") revisarVinculo();
+        if (valor === "true") sincronizar();
       })
       .catch((e) => console.error("Error leyendo vinculación", e));
   }, []);
 
   // Si el admin desvinculó este teléfono, vuelve a demo y borra los datos de la empresa (son de ella, no del vendedor)
-  const revisarVinculo = async (): Promise<void> => {
-    const { data: sesion } = await supabase.auth.getSession();
-    const uid = sesion.session?.user.id;
-    if (!uid) return;
-    const { data, error } = await supabase.from("miembros").select("user_id").eq("user_id", uid).maybeSingle();
-    if (error || data) return; // sin señal o sigue vinculada
-    await AsyncStorage.multiRemove([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA, STORAGE_KEY_VISITAS]);
+  const desvincularLocal = async (): Promise<void> => {
+    await AsyncStorage.multiRemove([STORAGE_KEY_VINCULADA, STORAGE_KEY_EMPRESA, STORAGE_KEY_VISITAS, STORAGE_KEY_COLA, STORAGE_KEY_ULTIMA_SYNC]);
+    vinculadaRef.current = false;
+    colaRef.current = [];
+    setPendientesSync(0);
+    setUltimaSync(null);
     guardarClientes(() => []);
     setRuta([]);
     setVinculada(false);
@@ -245,6 +266,98 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     Alert.alert("Desvinculada", "Tu empresa desvinculó este teléfono. La app volvió al modo demo.");
   };
+
+  const encolar = async (pendiente: Pendiente): Promise<void> => {
+    if (!vinculadaRef.current) return;
+    colaRef.current = agregarACola(colaRef.current, pendiente);
+    setPendientesSync(colaRef.current.length);
+    await AsyncStorage.setItem(STORAGE_KEY_COLA, JSON.stringify(colaRef.current));
+  };
+
+  // Sube lo pendiente y el km de hoy, y baja los clientes asignados. Sin señal no hace nada: la cola espera.
+  const sincronizar = async (): Promise<void> => {
+    if (!vinculadaRef.current || sincronizandoRef.current) return;
+    sincronizandoRef.current = true;
+    try {
+      const { data: sesion } = await supabase.auth.getSession();
+      const uid = sesion.session?.user.id;
+      if (!uid) return;
+      const { data: miembro, error } = await supabase.from("miembros").select("organizacion_id").eq("user_id", uid).maybeSingle();
+      if (error) return; // sin señal
+      if (!miembro) return desvincularLocal();
+      const org = miembro.organizacion_id;
+
+      while (colaRef.current.length > 0) {
+        const p = colaRef.current[0];
+        const { error: e } =
+          p.tipo === "visita"
+            ? await supabase.from("visitas").upsert(
+                { id: p.id, organizacion_id: org, vendedor_id: uid, cliente_id: p.cliente_id, visitada_en: p.visitada_en, ultima_visita_anterior: p.ultima_visita_anterior },
+                { onConflict: "id", ignoreDuplicates: true },
+              )
+            : p.tipo === "borrar_visita"
+              ? await supabase.from("visitas").delete().eq("id", p.id)
+              : p.tipo === "ubicacion"
+                ? await supabase.from("clientes").update({ lat: p.lat, lng: p.lng, direccion: p.direccion, geo_status: p.geo_status }).eq("id", p.cliente_id)
+                : await supabase.from("prospectos").upsert(
+                    { id: p.id, organizacion_id: org, vendedor_id: uid, nombre: p.nombre, rut: p.rut, direccion: p.direccion, lat: p.lat, lng: p.lng },
+                    { onConflict: "id", ignoreDuplicates: true },
+                  );
+        // Sin código = no hubo respuesta del servidor: se reintenta después. Con código, el servidor lo
+        // rechazó (por ejemplo, el admin borró el cliente): se descarta para no trabar la cola.
+        if (e && !e.code) return;
+        if (e) console.warn("Cambio rechazado por el servidor, se descarta", p.tipo, e.message);
+        colaRef.current = colaRef.current.slice(1);
+        setPendientesSync(colaRef.current.length);
+        await AsyncStorage.setItem(STORAGE_KEY_COLA, JSON.stringify(colaRef.current));
+      }
+
+      // Km y recorrido del día; los puntos se reducen a 300 para no subir miles por jornada
+      const puntos = trayectoriaRealRef.current;
+      const paso = Math.max(1, Math.ceil(puntos.length / 300));
+      const { error: eKm } = await supabase.from("recorridos").upsert(
+        {
+          organizacion_id: org,
+          vendedor_id: uid,
+          fecha: obtenerFechaHoy(),
+          km: Math.round(kmRecorridosRealesRef.current * 100) / 100,
+          puntos: puntos.filter((_, i) => i % paso === 0).map((pt) => [pt.latitude, pt.longitude]),
+        },
+        { onConflict: "vendedor_id,fecha" },
+      );
+      if (eKm && !eKm.code) return;
+
+      const { data: filas, error: eClientes } = await supabase
+        .from("clientes")
+        .select("id, nombre, rut, direccion, lat, lng, geo_status, ultima_visita")
+        .eq("vendedor_id", uid)
+        .order("nombre");
+      if (eClientes || !filas) return;
+      await guardarClientes(() => clientesDesdeServidor(filas, colaRef.current), true);
+
+      const ahora = new Date().toISOString();
+      setUltimaSync(ahora);
+      await AsyncStorage.setItem(STORAGE_KEY_ULTIMA_SYNC, ahora);
+    } catch (e) {
+      console.warn("Sincronización pendiente", e);
+    } finally {
+      sincronizandoRef.current = false;
+    }
+  };
+
+  // Reintenta al recuperar señal, cada 15 minutos y al salir de la app (cierre de jornada)
+  useEffect(() => {
+    if (!vinculada) return;
+    if (conectado) sincronizar();
+    const intervalo = setInterval(sincronizar, INTERVALO_SYNC_MS);
+    const sub = AppState.addEventListener("change", (estado) => {
+      if (estado === "background") sincronizar();
+    });
+    return () => {
+      clearInterval(intervalo);
+      sub.remove();
+    };
+  }, [vinculada, conectado]);
 
   const vincularCon = async (token: string): Promise<string | null> => {
     try {
@@ -259,8 +372,14 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
       const { data: org } = await supabase.from("organizaciones").select("nombre").eq("id", organizacionId).single();
       const nombre = org?.nombre ?? "tu empresa";
       await AsyncStorage.multiSet([[STORAGE_KEY_VINCULADA, "true"], [STORAGE_KEY_EMPRESA, nombre]]);
+      // Los clientes de demo eran de prueba: desde ahora la lista es la que asigna la empresa
+      await AsyncStorage.removeItem(STORAGE_KEY_VISITAS);
+      await guardarClientes(() => [], true);
+      setRuta([]);
+      vinculadaRef.current = true;
       setVinculada(true);
       setEmpresa(nombre);
+      sincronizar();
       return null;
     } catch (e) {
       return mensajeErrorVinculo(String(e));
@@ -280,10 +399,22 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Recibe un updater sobre la lista vigente para no pisar cambios hechos durante un await
+  // desdeServidor: la lista viene de la empresa y no hay nada que subir
   const guardarClientes = async (
     actualizar: (lista: Cliente[]) => Cliente[],
+    desdeServidor = false,
   ): Promise<void> => {
+    const anterior = new Map(clientesRef.current.map((c) => [c.id, c]));
     const nuevaLista = actualizar(clientesRef.current);
+    // Vinculada: toda corrección de ubicación o dirección hecha en terreno se encola para subir
+    if (vinculadaRef.current && !desdeServidor) {
+      for (const c of nuevaLista) {
+        const a = anterior.get(c.id);
+        if (!a || c.geoStatus === "pendiente") continue;
+        if (a.lat !== c.lat || a.lng !== c.lng || a.direccion !== c.direccion || a.geoStatus !== c.geoStatus)
+          encolar({ tipo: "ubicacion", cliente_id: c.id, lat: c.lat ?? null, lng: c.lng ?? null, direccion: c.direccion, geo_status: c.geoStatus });
+      }
+    }
     clientesRef.current = nuevaLista;
     setClientes(nuevaLista);
     try {
@@ -534,6 +665,29 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     rut: string,
     direccion: string,
   ): Promise<boolean> => {
+    // Vinculada: el vendedor no crea clientes, propone prospectos que la empresa revisa en el panel
+    if (vinculada) {
+      if (!nombre.trim()) {
+        Alert.alert("Falta el nombre", "Escribe el nombre del prospecto");
+        return false;
+      }
+      if (rut.trim() && !formatoRutValido(rut)) {
+        Alert.alert("RUT inválido", "Revisa el RUT ingresado o déjalo en blanco");
+        return false;
+      }
+      await encolar({
+        tipo: "prospecto",
+        id: uuid(),
+        nombre: nombre.trim(),
+        rut: rut.trim() ? formatearRut(rut) : "",
+        direccion: direccion.trim(),
+        lat: posicionVendedor?.latitude ?? null,
+        lng: posicionVendedor?.longitude ?? null,
+      });
+      sincronizar();
+      Alert.alert("Prospecto enviado", "Tu empresa lo verá en el panel y decidirá si lo agrega a tu cartera.");
+      return true;
+    }
     if (cuposDisponibles(clientesRef.current.length, vinculada) === 0) {
       avisarLimiteDemo();
       return false;
@@ -1010,6 +1164,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     if (visitasDeHoy.some((v) => v.clienteId === cliente.id)) return;
 
     const nuevaVisita: RegistroVisita = {
+      id: uuid(),
       clienteId: cliente.id,
       nombreCliente: cliente.nombre,
       horaVisita: new Date().toLocaleTimeString("es-CL", {
@@ -1021,6 +1176,13 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     };
 
     todasLasVisitas[hoy] = [...visitasDeHoy, nuevaVisita];
+    await encolar({
+      tipo: "visita",
+      id: nuevaVisita.id!,
+      cliente_id: cliente.id,
+      visitada_en: new Date().toISOString(),
+      ultima_visita_anterior: nuevaVisita.ultimaVisitaAnterior ?? null,
+    });
     await AsyncStorage.setItem(
       STORAGE_KEY_VISITAS,
       JSON.stringify(todasLasVisitas),
@@ -1090,6 +1252,7 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
     todasLasVisitas[hoy] = (todasLasVisitas[hoy] ?? []).filter(
       (v) => v.clienteId !== clienteId,
     );
+    if (registro?.id) await encolar({ tipo: "borrar_visita", id: registro.id });
     await AsyncStorage.setItem(
       STORAGE_KEY_VISITAS,
       JSON.stringify(todasLasVisitas),
@@ -1127,6 +1290,9 @@ export function ClientesProvider({ children }: { children: React.ReactNode }) {
         vinculada,
         empresa,
         vincularCon,
+        pendientesSync,
+        ultimaSync,
+        sincronizar,
         progresoImport,
         agregando,
         agregarCliente,
